@@ -746,7 +746,7 @@ class _LogMealSheetState extends State<LogMealSheet> {
                       return GestureDetector(
                         onTap: () => setState(() => _selectedFood = item),
                         child: Container(
-                          width: 140,
+                          width: 155,
                           margin: const EdgeInsets.only(right: 8),
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(

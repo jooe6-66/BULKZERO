@@ -4,6 +4,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/food_item.dart';
 import '../models/meal_log.dart';
 import '../models/user_settings.dart';
+import '../data/dkpi_foods.dart';
 
 class DbService {
   static late final Isar isar;
@@ -60,56 +61,28 @@ class DbService {
   }
 
   static Future<void> _seedInitialFoods() async {
-    final count = await isar.foodItems.count();
-    if (count > 0) return;
+    final existingFoods = await isar.foodItems.where().findAll();
+    final existingNames = existingFoods.map((e) => e.name.toLowerCase().trim()).toSet();
 
-    final initialFoods = [
-      FoodItem()
-        ..name = 'Nasi Putih'
-        ..portionUnit = 'centong'
-        ..estimatedGrams = 100
-        ..calories = 130
-        ..protein = 2.7
-        ..carbs = 28
-        ..fat = 0.3,
-      FoodItem()
-        ..name = 'Dada Ayam'
-        ..portionUnit = 'potong sedang'
-        ..estimatedGrams = 100
-        ..calories = 165
-        ..protein = 31
-        ..carbs = 0
-        ..fat = 3.6,
-      FoodItem()
-        ..name = 'Telur Ayam'
-        ..portionUnit = 'butir'
-        ..estimatedGrams = 55
-        ..calories = 78
-        ..protein = 6.3
-        ..carbs = 0.6
-        ..fat = 5,
-      FoodItem()
-        ..name = 'Tempe'
-        ..portionUnit = 'potong sedang'
-        ..estimatedGrams = 40
-        ..calories = 80
-        ..protein = 7.5
-        ..carbs = 3
-        ..fat = 4,
-      FoodItem()
-        ..name = 'Tahu'
-        ..portionUnit = 'potong sedang'
-        ..estimatedGrams = 50
-        ..calories = 40
-        ..protein = 4
-        ..carbs = 1
-        ..fat = 2.5,
-    ];
+    final itemsToSeed = dkpiFoodDatabase
+        .where((df) => !existingNames.contains(df.name.toLowerCase().trim()))
+        .map((df) => FoodItem()
+          ..name = df.name
+          ..portionUnit = df.portionUnit
+          ..estimatedGrams = df.estimatedGrams
+          ..calories = df.calories
+          ..protein = df.protein
+          ..carbs = df.carbs
+          ..fat = df.fat
+          ..isCustom = false)
+        .toList();
 
-    await isar.writeTxn(() async {
-      await isar.foodItems.putAll(initialFoods);
-    });
-    debugPrint('Seeded initial URT food items');
+    if (itemsToSeed.isNotEmpty) {
+      await isar.writeTxn(() async {
+        await isar.foodItems.putAll(itemsToSeed);
+      });
+      debugPrint('Seeded ${itemsToSeed.length} DKPI food items into local database.');
+    }
   }
 
   static Future<List<FoodItem>> searchFoods(String query) async {
