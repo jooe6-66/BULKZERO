@@ -1,3 +1,6 @@
+import com.android.build.gradle.BaseExtension
+import com.android.build.gradle.LibraryExtension
+
 allprojects {
     repositories {
         google()
@@ -15,8 +18,30 @@ subprojects {
     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
+
 subprojects {
-    project.evaluationDependsOn(":app")
+    plugins.withId("com.android.library") {
+        configure<LibraryExtension> {
+            val pkg = (project.group as? String)?.takeIf { it.isNotEmpty() }
+                ?: "dev.isar.${project.name.replace('-', '_')}"
+            namespace = pkg
+        }
+    }
+
+    val configureAndroid = {
+        val android = project.extensions.findByName("android")
+        if (android is BaseExtension) {
+            android.compileSdkVersion(35)
+        }
+    }
+
+    if (project.state.executed) {
+        configureAndroid()
+    } else {
+        project.afterEvaluate {
+            configureAndroid()
+        }
+    }
 }
 
 tasks.register<Delete>("clean") {
