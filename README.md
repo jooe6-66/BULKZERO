@@ -9,7 +9,7 @@ Aplikasi pelacak kalori dan protein harian untuk fase *bulking*, dirancang khusu
 - **105 Database Makanan Lokal (DKPI):** Data gizi resmi pangan Indonesia dengan takaran rumah tangga umum (*centong nasi, potong dada ayam, butir telur, papan tempe*).
 - **Target Bulking Otomatis:** Perhitungan BMR (Mifflin-St Jeor), TDEE, estimasi BMI, serta rekomendasi target kalori surplus (+500 kkal) dan protein harian.
 - **Salin Menu Kemarin (1-Tap Copy):** Salin riwayat makan hari kemarin ke hari ini dalam 1 klik tanpa input ulang.
-- **Ubah Porsi Langsung:** Edit penggali porsi (0.5x, 1x, 1.5x, 2x, 3x) langsung dari dashboard.
+- **Ubah Porsi Model Video Speed:** Edit pengali porsi ala kecepatan video playback (0.25x, 0.5x, 0.75x, Normal 1x, 1.25x, 1.5x, 1.75x, 2x dst.) dengan kalkulasi makro instan 1-tap.
 - **Log Berat Badan Berkala:** Pantau tren kenaikan berat badan dengan indikator delta selisih (+/- kg).
 - **100% Offline & Cepat:** Menggunakan Isar Database lokal. Bebas iklan, bebas pelacakan, dan instan.
 

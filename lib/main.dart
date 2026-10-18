@@ -731,7 +731,7 @@ class _LogMealSheetState extends State<LogMealSheet> {
   void _adjustPortion(double delta) {
     setState(() {
       final next = _portion + delta;
-      if (next >= 0.5) _portion = next;
+      if (next >= 0.25) _portion = double.parse(next.toStringAsFixed(2));
     });
   }
 
@@ -892,7 +892,7 @@ class _LogMealSheetState extends State<LogMealSheet> {
                         children: [
                           IconButton(
                             icon: const Icon(Icons.remove_circle_outline),
-                            onPressed: () => _adjustPortion(-0.5),
+                            onPressed: () => _adjustPortion(-0.25),
                           ),
                           Text(
                             _portion % 1 == 0
@@ -905,34 +905,43 @@ class _LogMealSheetState extends State<LogMealSheet> {
                           ),
                           IconButton(
                             icon: const Icon(Icons.add_circle_outline),
-                            onPressed: () => _adjustPortion(0.5),
+                            onPressed: () => _adjustPortion(0.25),
                           ),
                         ],
                       ),
                     ],
                   ),
                   const SizedBox(height: 6),
-                  // Quick multiplier chips
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [0.5, 1.0, 1.5, 2.0, 3.0].map((val) {
-                      final isCurrent = _portion == val;
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: OutlinedButton(
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size(44, 32),
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            backgroundColor: isCurrent
-                                ? Theme.of(context).colorScheme.primary
-                                : null,
-                            foregroundColor: isCurrent ? Colors.black : Colors.white,
+                  // Quick multiplier chips (video speed style)
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3.0].map((val) {
+                        final isCurrent = (_portion - val).abs() < 0.05;
+                        final label = val == 1.0 ? '1x (Normal)' : '${val % 1 == 0 ? val.toInt() : val}x';
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 3),
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size(44, 30),
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              backgroundColor: isCurrent
+                                  ? Theme.of(context).colorScheme.primary
+                                  : null,
+                              foregroundColor: isCurrent ? Colors.black : Colors.white,
+                              side: BorderSide(
+                                color: isCurrent
+                                    ? Theme.of(context).colorScheme.primary
+                                    : const Color(0xFF333842),
+                              ),
+                            ),
+                            onPressed: () => setState(() => _portion = val),
+                            child: Text(label, style: const TextStyle(fontSize: 12)),
                           ),
-                          onPressed: () => setState(() => _portion = val),
-                          child: Text('${val % 1 == 0 ? val.toInt() : val}x'),
-                        ),
-                      );
-                    }).toList(),
+                        );
+                      }).toList(),
+                    ),
                   ),
                   const Divider(height: 20),
                   // URT Conversion Preview
@@ -1436,6 +1445,20 @@ class EditPortionSheet extends StatefulWidget {
 
 class _EditPortionSheetState extends State<EditPortionSheet> {
   late double _portion;
+  bool _showCustomStepper = false;
+
+  final List<(double, String)> _speedOptions = const [
+    (0.25, '0.25x'),
+    (0.5, '0.5x'),
+    (0.75, '0.75x'),
+    (1.0, 'Normal (1x)'),
+    (1.25, '1.25x'),
+    (1.5, '1.5x'),
+    (1.75, '1.75x'),
+    (2.0, '2x'),
+    (2.5, '2.5x'),
+    (3.0, '3x'),
+  ];
 
   @override
   void initState() {
@@ -1443,33 +1466,39 @@ class _EditPortionSheetState extends State<EditPortionSheet> {
     _portion = widget.log.portionMultiplier;
   }
 
-  void _adjustPortion(double delta) {
-    setState(() {
-      final next = _portion + delta;
-      if (next >= 0.25) {
-        _portion = double.parse(next.toStringAsFixed(2));
-      }
-    });
+  Future<void> _selectAndSave(double value) async {
+    setState(() => _portion = value);
+    await DbService.updateMealLogPortion(widget.log.id, value);
+    widget.onSaved();
+    if (mounted) Navigator.pop(context);
   }
 
-  Future<void> _save() async {
+  Future<void> _saveCustom() async {
     await DbService.updateMealLogPortion(widget.log.id, _portion);
     widget.onSaved();
     if (mounted) Navigator.pop(context);
   }
 
+  void _adjustPortion(double delta) {
+    setState(() {
+      final next = _portion + delta;
+      if (next >= 0.1) {
+        _portion = double.parse(next.toStringAsFixed(2));
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final food = widget.log.foodItem.value;
-    final cal = ((food?.calories ?? 0.0) * _portion).toInt();
-    final pro = ((food?.protein ?? 0.0) * _portion).toStringAsFixed(1);
-    final carbs = ((food?.carbs ?? 0.0) * _portion).toStringAsFixed(1);
-    final fat = ((food?.fat ?? 0.0) * _portion).toStringAsFixed(1);
-    final gram = ((food?.estimatedGrams ?? 0.0) * _portion).toInt();
+    final foodCal = food?.calories ?? 0.0;
+    final foodPro = food?.protein ?? 0.0;
+    final foodGrams = food?.estimatedGrams ?? 0.0;
 
-    final portionPresets = [0.5, 1.0, 1.5, 2.0, 3.0];
-
-    return Padding(
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.75,
+      ),
       padding: EdgeInsets.only(
         left: 20,
         right: 20,
@@ -1483,9 +1512,15 @@ class _EditPortionSheetState extends State<EditPortionSheet> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Ubah Porsi Makanan',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              Row(
+                children: [
+                  Icon(Icons.speed, color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Porsi (Model Video Speed)',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ],
               ),
               IconButton(
                 icon: const Icon(Icons.close),
@@ -1493,14 +1528,15 @@ class _EditPortionSheetState extends State<EditPortionSheet> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 6),
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: const Color(0xFF262A32),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
                   child: Column(
@@ -1508,92 +1544,124 @@ class _EditPortionSheetState extends State<EditPortionSheet> {
                     children: [
                       Text(
                         food?.name ?? 'Makanan',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                       ),
-                      const SizedBox(height: 4),
                       Text(
-                        '${food?.portionUnit ?? 'porsi'} (~${food?.estimatedGrams.toInt() ?? 0}g standar)',
-                        style: const TextStyle(color: Colors.white54, fontSize: 12),
+                        '1 ${food?.portionUnit ?? 'porsi'} (~${foodGrams.toInt()}g standar)',
+                        style: const TextStyle(color: Colors.white54, fontSize: 11),
                       ),
                     ],
                   ),
                 ),
-                Text(
-                  '$cal kkal',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.primary,
+                TextButton.icon(
+                  style: TextButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.primary,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
                   ),
+                  icon: Icon(_showCustomStepper ? Icons.expand_less : Icons.tune, size: 16),
+                  label: Text(_showCustomStepper ? 'Tutup Kustom' : 'Kustom'),
+                  onPressed: () => setState(() => _showCustomStepper = !_showCustomStepper),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
-          const Text('Jumlah Porsi:', style: TextStyle(fontSize: 13, color: Colors.white70)),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconButton.filledTonal(
-                icon: const Icon(Icons.remove),
-                onPressed: () => _adjustPortion(-0.25),
+          if (_showCustomStepper) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1B1E23),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFF333842)),
               ),
-              const SizedBox(width: 16),
-              Text(
-                '${_portion == _portion.roundToDouble() ? _portion.toInt() : _portion}x',
-                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              child: Row(
+                children: [
+                  IconButton.filledTonal(
+                    icon: const Icon(Icons.remove, size: 18),
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                    onPressed: () => _adjustPortion(-0.1),
+                  ),
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        '${_portion.toStringAsFixed(2)}x (~${(foodGrams * _portion).toInt()}g)',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                  IconButton.filledTonal(
+                    icon: const Icon(Icons.add, size: 18),
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                    onPressed: () => _adjustPortion(0.1),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      minimumSize: const Size(60, 36),
+                    ),
+                    onPressed: _saveCustom,
+                    child: const Text('Simpan'),
+                  ),
+                ],
               ),
-              const SizedBox(width: 16),
-              IconButton.filledTonal(
-                icon: const Icon(Icons.add),
-                onPressed: () => _adjustPortion(0.25),
-              ),
-            ],
+            ),
+          ],
+          const SizedBox(height: 12),
+          const Text(
+            'PILIH KECEPATAN / PENGALI PORSI:',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: Colors.white54,
+              letterSpacing: 0.5,
+            ),
           ),
-          const SizedBox(height: 10),
-          Center(
-            child: Wrap(
-              spacing: 8,
-              children: portionPresets.map((p) {
-                final isSelected = (_portion - p).abs() < 0.05;
-                return ChoiceChip(
-                  label: Text('${p == p.roundToDouble() ? p.toInt() : p}x'),
-                  selected: isSelected,
-                  onSelected: (_) => setState(() => _portion = p),
+          const SizedBox(height: 6),
+          Expanded(
+            child: ListView.separated(
+              itemCount: _speedOptions.length,
+              separatorBuilder: (_, _) => const Divider(height: 1, color: Color(0xFF262A32)),
+              itemBuilder: (ctx, index) {
+                final opt = _speedOptions[index];
+                final isSelected = (_portion - opt.$1).abs() < 0.05;
+                final optCal = (foodCal * opt.$1).toInt();
+                final optPro = (foodPro * opt.$1).toStringAsFixed(1);
+                final optGram = (foodGrams * opt.$1).toInt();
+
+                return ListTile(
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  leading: isSelected
+                      ? Icon(
+                          Icons.check,
+                          color: Theme.of(context).colorScheme.primary,
+                          size: 20,
+                        )
+                      : const SizedBox(width: 20),
+                  title: Text(
+                    opt.$2,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                      color: isSelected
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.white,
+                    ),
+                  ),
+                  trailing: Text(
+                    '$optCal kkal • ${optPro}g P (~${optGram}g)',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isSelected ? Colors.white70 : Colors.white38,
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                  ),
+                  onTap: () => _selectAndSave(opt.$1),
                 );
-              }).toList(),
-            ),
-          ),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF16191E),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                Text('P: ${pro}g', style: const TextStyle(color: Color(0xFF4CAF50), fontWeight: FontWeight.bold, fontSize: 13)),
-                Text('K: ${carbs}g', style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                Text('L: ${fat}g', style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                Text('~${gram}g', style: const TextStyle(color: Colors.white54, fontSize: 13)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                foregroundColor: Colors.black,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              onPressed: _save,
-              child: const Text('Simpan Porsi', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              },
             ),
           ),
         ],
