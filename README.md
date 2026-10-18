@@ -1,10 +1,10 @@
-# BulkZero — Simple Offline Bulking Tracker
+# BulkZero - Simple Offline Bulking Tracker
 
 Aplikasi pelacak kalori dan protein harian untuk fase *bulking*, dirancang khusus dengan database makanan lokal Indonesia (DKPI) dan ukuran rumah tangga (URT) standar. Ringan, cepat, dan 100% offline tanpa perlu login atau koneksi internet (*Zero Internet, Zero Login, Zero Ads*).
 
 ---
 
-## ⚡ Fitur Utama
+## Fitur Utama
 
 - **105 Database Makanan Lokal (DKPI):** Data gizi resmi pangan Indonesia dengan takaran rumah tangga umum (*centong nasi, potong dada ayam, butir telur, papan tempe*).
 - **Target Bulking Otomatis:** Perhitungan BMR (Mifflin-St Jeor), TDEE, estimasi BMI, serta rekomendasi target kalori surplus (+500 kkal) dan protein harian.
@@ -15,14 +15,14 @@ Aplikasi pelacak kalori dan protein harian untuk fase *bulking*, dirancang khusu
 
 ---
 
-## 📲 Unduh & Pasang Aplikasi
+## Unduh & Pasang Aplikasi
 
-### 🤖 Android (APK)
+### Android (APK)
 1. Buka menu **[Releases](https://github.com/jooe6-66/bulk-track/releases)** di repositori ini.
 2. Unduh file `app-release.apk` pada rilis versi terbaru.
 3. Buka file APK di HP Android Anda dan izinkan instalasi (*Allow from this source*).
 
-### 🍎 iOS / iPhone (IPA via GitHub Actions)
+### iOS / iPhone (IPA via GitHub Actions)
 Karena sistem iOS tertutup, build `.ipa` dilakukan secara otomatis di cloud macOS GitHub:
 1. Buka tab **[Actions](https://github.com/jooe6-66/bulk-track/actions)** pada repositori ini.
 2. Pilih workflow **"Build iOS IPA"** di menu sebelah kiri.
@@ -36,7 +36,7 @@ Karena sistem iOS tertutup, build `.ipa` dilakukan secara otomatis di cloud macO
 
 ---
 
-## 🛠️ Tech Stack & Pengembangan
+## Tech Stack & Pengembangan
 
 - **Framework:** Flutter 3 (Dart)
 - **Database:** Isar Database (Local NoSQL)
