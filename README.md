@@ -1,6 +1,6 @@
-# BULKJOOE - Simple Offline Bulking Tracker
+# BulkZero - Simple Offline Bulking Tracker
 
-Aplikasi pelacak kalori dan protein harian untuk fase *bulking*, dirancang khusus dengan database makanan lokal Indonesia (DKPI) dan ukuran rumah tangga (URT) standar. Ringan, cepat, dan 100% offline tanpa perlu login atau koneksi internet.
+Aplikasi pelacak kalori dan protein harian untuk fase *bulking*, dirancang khusus dengan database makanan lokal Indonesia (DKPI) dan ukuran rumah tangga (URT) standar. Ringan, cepat, dan 100% offline tanpa perlu login atau koneksi internet (Zero Internet, Zero Login, Zero Ads).
 
 ---
 

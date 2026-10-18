@@ -16,7 +16,7 @@ class BulkingTrackerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'BULKJOOE',
+      title: 'BulkZero',
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.dark,
       darkTheme: ThemeData(
@@ -318,7 +318,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'BULKJOOE',
+              'BulkZero',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
             ),
             if (_userName.isNotEmpty)
@@ -1258,7 +1258,7 @@ class _ProfileDialogState extends State<ProfileDialog> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              widget.isOnboarding ? 'Selamat Datang di BULKJOOE' : 'Profil & Target Bulking',
+              widget.isOnboarding ? 'Selamat Datang di BulkZero' : 'Profil & Target Bulking',
               style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
             ),
           ),
