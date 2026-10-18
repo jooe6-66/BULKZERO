@@ -15,7 +15,7 @@ class BulkingTrackerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Bulking Tracker',
+      title: 'BULKJOOE',
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.dark,
       darkTheme: ThemeData(
@@ -181,7 +181,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'Bulking Tracker',
+          'BULKJOOE',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
         ),
         actions: [
