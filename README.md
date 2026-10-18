@@ -19,7 +19,7 @@ Aplikasi pelacak kalori dan protein harian untuk fase *bulking*, dirancang khusu
 
 ### Android (APK)
 1. Buka menu **[Releases](https://github.com/jooe6-66/bulk-track/releases)** di repositori ini.
-2. Unduh file `app-release.apk` pada rilis versi terbaru.
+2. Unduh file apk pada rilis versi terbaru.
 3. Buka file APK di HP Android Anda dan izinkan instalasi (*Allow from this source*).
 
 ### iOS / iPhone (IPA via GitHub Actions)
