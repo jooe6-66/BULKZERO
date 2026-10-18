@@ -44,5 +44,8 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Local skill
+skill.md
+
 # Widget Preview related
 .widget_preview/
