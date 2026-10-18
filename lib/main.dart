@@ -912,20 +912,27 @@ class _LogMealSheetState extends State<LogMealSheet> {
                     ],
                   ),
                   const SizedBox(height: 6),
-                  // Quick multiplier chips (video speed style)
+                  // Quick portion presets (daily Indonesian terms)
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      children: [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3.0].map((val) {
+                      children: [
+                        (0.5, '🥣 Setengah'),
+                        (1.0, '🍽️ Pas (Standar)'),
+                        (1.5, '🍲 Nambah'),
+                        (2.0, '🥘 Jumbo'),
+                        (3.0, '🏋️ Porsi Kuli'),
+                      ].map((item) {
+                        final val = item.$1;
+                        final label = item.$2;
                         final isCurrent = (_portion - val).abs() < 0.05;
-                        final label = val == 1.0 ? '1x (Normal)' : '${val % 1 == 0 ? val.toInt() : val}x';
                         return Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 3),
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
                           child: OutlinedButton(
                             style: OutlinedButton.styleFrom(
-                              minimumSize: const Size(44, 30),
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              minimumSize: const Size(44, 32),
+                              padding: const EdgeInsets.symmetric(horizontal: 10),
                               backgroundColor: isCurrent
                                   ? Theme.of(context).colorScheme.primary
                                   : null,
@@ -1445,59 +1452,79 @@ class EditPortionSheet extends StatefulWidget {
 
 class _EditPortionSheetState extends State<EditPortionSheet> {
   late double _portion;
-  bool _showCustomStepper = false;
+  late final TextEditingController _gramCtrl;
 
-  final List<(double, String)> _speedOptions = const [
-    (0.25, '0.25x'),
-    (0.5, '0.5x'),
-    (0.75, '0.75x'),
-    (1.0, 'Normal (1x)'),
-    (1.25, '1.25x'),
-    (1.5, '1.5x'),
-    (1.75, '1.75x'),
-    (2.0, '2x'),
-    (2.5, '2.5x'),
-    (3.0, '3x'),
+  static const List<(double, String, String, String)> _portionPresets = [
+    (0.5, '🥣 Setengah', '0.5x', 'Dikit / ganjel'),
+    (1.0, '🍽️ Pas (Standar)', '1.0x', 'Porsi normal'),
+    (1.5, '🍲 Nambah', '1.5x', 'Nambah dikit'),
+    (2.0, '🥘 Jumbo', '2.0x', 'Porsi dobel'),
+    (3.0, '🏋️ Porsi Kuli', '3.0x', 'Super bulking'),
   ];
 
   @override
   void initState() {
     super.initState();
     _portion = widget.log.portionMultiplier;
+    final stdGram = widget.log.foodItem.value?.estimatedGrams ?? 100.0;
+    _gramCtrl = TextEditingController(
+      text: (_portion * stdGram).round().toString(),
+    );
   }
 
-  Future<void> _selectAndSave(double value) async {
-    setState(() => _portion = value);
-    await DbService.updateMealLogPortion(widget.log.id, value);
-    widget.onSaved();
-    if (mounted) Navigator.pop(context);
+  @override
+  void dispose() {
+    _gramCtrl.dispose();
+    super.dispose();
   }
 
-  Future<void> _saveCustom() async {
+  void _applyMultiplier(double mult) {
+    setState(() {
+      _portion = mult;
+      final stdGram = widget.log.foodItem.value?.estimatedGrams ?? 100.0;
+      _gramCtrl.text = (_portion * stdGram).round().toString();
+    });
+  }
+
+  void _onGramChanged(String val) {
+    final gram = double.tryParse(val.trim());
+    final stdGram = widget.log.foodItem.value?.estimatedGrams ?? 100.0;
+    if (gram != null && gram > 0 && stdGram > 0) {
+      setState(() {
+        _portion = double.parse((gram / stdGram).toStringAsFixed(2));
+      });
+    }
+  }
+
+  void _stepGram(double deltaGram) {
+    final currentGram = double.tryParse(_gramCtrl.text) ??
+        ((widget.log.foodItem.value?.estimatedGrams ?? 100.0) * _portion);
+    final nextGram = currentGram + deltaGram;
+    if (nextGram >= 5) {
+      _gramCtrl.text = nextGram.round().toString();
+      _onGramChanged(_gramCtrl.text);
+    }
+  }
+
+  Future<void> _save() async {
     await DbService.updateMealLogPortion(widget.log.id, _portion);
     widget.onSaved();
     if (mounted) Navigator.pop(context);
   }
 
-  void _adjustPortion(double delta) {
-    setState(() {
-      final next = _portion + delta;
-      if (next >= 0.1) {
-        _portion = double.parse(next.toStringAsFixed(2));
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final food = widget.log.foodItem.value;
-    final foodCal = food?.calories ?? 0.0;
-    final foodPro = food?.protein ?? 0.0;
-    final foodGrams = food?.estimatedGrams ?? 0.0;
+    final stdGram = food?.estimatedGrams ?? 100.0;
+    final currentGram = (_portion * stdGram).round();
+    final cal = ((food?.calories ?? 0.0) * _portion).round();
+    final pro = ((food?.protein ?? 0.0) * _portion).toStringAsFixed(1);
+    final carbs = ((food?.carbs ?? 0.0) * _portion).toStringAsFixed(1);
+    final fat = ((food?.fat ?? 0.0) * _portion).toStringAsFixed(1);
 
     return Container(
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.75,
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
       ),
       padding: EdgeInsets.only(
         left: 20,
@@ -1505,37 +1532,12 @@ class _EditPortionSheetState extends State<EditPortionSheet> {
         top: 20,
         bottom: MediaQuery.of(context).viewInsets.bottom + 20,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.speed, color: Theme.of(context).colorScheme.primary),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Porsi (Model Video Speed)',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-              IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: const Color(0xFF262A32),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
@@ -1544,127 +1546,234 @@ class _EditPortionSheetState extends State<EditPortionSheet> {
                     children: [
                       Text(
                         food?.name ?? 'Makanan',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
+                      const SizedBox(height: 2),
                       Text(
-                        '1 ${food?.portionUnit ?? 'porsi'} (~${foodGrams.toInt()}g standar)',
-                        style: const TextStyle(color: Colors.white54, fontSize: 11),
+                        'Porsi standar: 1 ${food?.portionUnit ?? 'porsi'} (~${stdGram.toInt()}g)',
+                        style: const TextStyle(color: Colors.white54, fontSize: 12),
                       ),
                     ],
                   ),
                 ),
-                TextButton.icon(
-                  style: TextButton.styleFrom(
-                    foregroundColor: Theme.of(context).colorScheme.primary,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                  ),
-                  icon: Icon(_showCustomStepper ? Icons.expand_less : Icons.tune, size: 16),
-                  label: Text(_showCustomStepper ? 'Tutup Kustom' : 'Kustom'),
-                  onPressed: () => setState(() => _showCustomStepper = !_showCustomStepper),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
                 ),
               ],
             ),
-          ),
-          if (_showCustomStepper) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 14),
+            // Macro Highlight Card
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFF232730),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  Column(
+                    children: [
+                      Text(
+                        '$cal',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                      const Text('Kalori (kkal)', style: TextStyle(fontSize: 11, color: Colors.white54)),
+                    ],
+                  ),
+                  Container(width: 1, height: 32, color: const Color(0xFF333842)),
+                  Column(
+                    children: [
+                      Text(
+                        '${pro}g',
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF4CAF50),
+                        ),
+                      ),
+                      const Text('Protein', style: TextStyle(fontSize: 11, color: Colors.white54)),
+                    ],
+                  ),
+                  Container(width: 1, height: 32, color: const Color(0xFF333842)),
+                  Column(
+                    children: [
+                      Text(
+                        '${currentGram}g',
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      Text(
+                        '~${_portion.toStringAsFixed(1)} porsi',
+                        style: const TextStyle(fontSize: 11, color: Colors.white54),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            // Preset Porsi Sehari-hari
+            const Text(
+              'PILIHAN PORSI MAKAN:',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: Colors.white70,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _portionPresets.map((preset) {
+                final isSelected = (_portion - preset.$1).abs() < 0.08;
+                final optCal = ((food?.calories ?? 0.0) * preset.$1).round();
+                final optGram = (stdGram * preset.$1).round();
+
+                return InkWell(
+                  onTap: () => _applyMultiplier(preset.$1),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)
+                          : const Color(0xFF1B1E23),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isSelected
+                            ? Theme.of(context).colorScheme.primary
+                            : const Color(0xFF2C313C),
+                        width: isSelected ? 1.5 : 1.0,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          preset.$2,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                            color: isSelected
+                                ? Theme.of(context).colorScheme.primary
+                                : Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF262A32),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            '~${optGram}g • $optCal kkal',
+                            style: const TextStyle(fontSize: 10, color: Colors.white70),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 18),
+            // Input Gramasi Langsung
+            const Text(
+              'ATAU TIMBANG LANGSUNG (GRAM):',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: Colors.white70,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: const Color(0xFF1B1E23),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF333842)),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF2C313C)),
               ),
               child: Row(
                 children: [
                   IconButton.filledTonal(
                     icon: const Icon(Icons.remove, size: 18),
-                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                    onPressed: () => _adjustPortion(-0.1),
+                    tooltip: '-10g',
+                    onPressed: () => _stepGram(-10),
                   ),
+                  const SizedBox(width: 8),
                   Expanded(
-                    child: Center(
-                      child: Text(
-                        '${_portion.toStringAsFixed(2)}x (~${(foodGrams * _portion).toInt()}g)',
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    child: TextField(
+                      controller: _gramCtrl,
+                      keyboardType: TextInputType.number,
+                      textAlign: TextAlign.center,
+                      onChanged: _onGramChanged,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(vertical: 8),
+                        suffixText: 'gram',
+                        border: OutlineInputBorder(),
                       ),
                     ),
                   ),
+                  const SizedBox(width: 8),
                   IconButton.filledTonal(
                     icon: const Icon(Icons.add, size: 18),
-                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                    onPressed: () => _adjustPortion(0.1),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.primary,
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      minimumSize: const Size(60, 36),
-                    ),
-                    onPressed: _saveCustom,
-                    child: const Text('Simpan'),
+                    tooltip: '+10g',
+                    onPressed: () => _stepGram(10),
                   ),
                 ],
               ),
             ),
+            const SizedBox(height: 10),
+            Center(
+              child: Text(
+                'Karbohidrat: ${carbs}g • Lemak: ${fat}g',
+                style: const TextStyle(fontSize: 11, color: Colors.white38),
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: _save,
+                child: Text(
+                  'Simpan Porsi (${currentGram}g • $cal kkal)',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                ),
+              ),
+            ),
           ],
-          const SizedBox(height: 12),
-          const Text(
-            'PILIH KECEPATAN / PENGALI PORSI:',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: Colors.white54,
-              letterSpacing: 0.5,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Expanded(
-            child: ListView.separated(
-              itemCount: _speedOptions.length,
-              separatorBuilder: (_, _) => const Divider(height: 1, color: Color(0xFF262A32)),
-              itemBuilder: (ctx, index) {
-                final opt = _speedOptions[index];
-                final isSelected = (_portion - opt.$1).abs() < 0.05;
-                final optCal = (foodCal * opt.$1).toInt();
-                final optPro = (foodPro * opt.$1).toStringAsFixed(1);
-                final optGram = (foodGrams * opt.$1).toInt();
-
-                return ListTile(
-                  dense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  leading: isSelected
-                      ? Icon(
-                          Icons.check,
-                          color: Theme.of(context).colorScheme.primary,
-                          size: 20,
-                        )
-                      : const SizedBox(width: 20),
-                  title: Text(
-                    opt.$2,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                      color: isSelected
-                          ? Theme.of(context).colorScheme.primary
-                          : Colors.white,
-                    ),
-                  ),
-                  trailing: Text(
-                    '$optCal kkal • ${optPro}g P (~${optGram}g)',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isSelected ? Colors.white70 : Colors.white38,
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                    ),
-                  ),
-                  onTap: () => _selectAndSave(opt.$1),
-                );
-              },
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
