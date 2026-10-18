@@ -3,6 +3,7 @@ import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/food_item.dart';
 import '../models/meal_log.dart';
+import '../models/user_settings.dart';
 
 class DbService {
   static late final Isar isar;
@@ -10,11 +11,31 @@ class DbService {
   static Future<void> init() async {
     final dir = await getApplicationDocumentsDirectory();
     isar = await Isar.open(
-      [FoodItemSchema, MealLogSchema],
+      [FoodItemSchema, MealLogSchema, UserSettingsSchema],
       directory: dir.path,
       name: 'bulking_db',
     );
     await _seedInitialFoods();
+  }
+
+  static Future<UserSettings> getSettings() async {
+    final settings = await isar.userSettings.get(0);
+    if (settings != null) return settings;
+
+    final defaultSettings = UserSettings();
+    await isar.writeTxn(() async {
+      await isar.userSettings.put(defaultSettings);
+    });
+    return defaultSettings;
+  }
+
+  static Future<void> saveSettings(double calories, double protein) async {
+    final settings = UserSettings()
+      ..targetCalories = calories
+      ..targetProtein = protein;
+    await isar.writeTxn(() async {
+      await isar.userSettings.put(settings);
+    });
   }
 
   static Future<void> _seedInitialFoods() async {

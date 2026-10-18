@@ -59,11 +59,11 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  final DateTime _selectedDate = DateTime.now();
+  DateTime _selectedDate = DateTime.now();
   List<MealLog> _logs = [];
   bool _isLoading = true;
 
-  // Bulking default targets
+  // Bulking targets (loaded from Isar)
   double _targetCalories = 2500;
   double _targetProtein = 140;
 
@@ -77,6 +77,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    _initData();
+  }
+
+  Future<void> _initData() async {
+    final settings = await DbService.getSettings();
+    if (mounted) {
+      setState(() {
+        _targetCalories = settings.targetCalories;
+        _targetProtein = settings.targetProtein;
+      });
+    }
     _loadLogs();
   }
 
@@ -87,6 +98,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _logs = logs;
       _isLoading = false;
     });
+  }
+
+  bool get _isToday {
+    final now = DateTime.now();
+    return _selectedDate.year == now.year &&
+        _selectedDate.month == now.month &&
+        _selectedDate.day == now.day;
+  }
+
+  void _changeDate(int offset) {
+    setState(() {
+      _selectedDate = _selectedDate.add(Duration(days: offset));
+    });
+    _loadLogs();
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+    );
+    if (picked != null) {
+      setState(() => _selectedDate = picked);
+      _loadLogs();
+    }
   }
 
   double get _totalCalories =>
@@ -106,6 +144,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       builder: (ctx) => LogMealSheet(
         initialSession: defaultSession ?? _sessions.first,
         sessions: _sessions,
+        selectedDate: _selectedDate,
         onSaved: _loadLogs,
       ),
     );
@@ -155,14 +194,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: const Text('Batal'),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               final cal = double.tryParse(calCtrl.text) ?? _targetCalories;
               final pro = double.tryParse(proCtrl.text) ?? _targetProtein;
-              setState(() {
-                _targetCalories = cal;
-                _targetProtein = pro;
-              });
-              Navigator.pop(ctx);
+              await DbService.saveSettings(cal, pro);
+              if (mounted) {
+                setState(() {
+                  _targetCalories = cal;
+                  _targetProtein = pro;
+                });
+              }
+              if (ctx.mounted) {
+                Navigator.pop(ctx);
+              }
             },
             child: const Text('Simpan'),
           ),
@@ -240,12 +284,64 @@ class _DashboardScreenState extends State<DashboardScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text(
-                  'Ringkasan Hari Ini',
+                  'Ringkasan Nutrisi',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
-                Text(
-                  '${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}',
-                  style: const TextStyle(color: Colors.white60, fontSize: 13),
+                Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF232730),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.chevron_left, size: 20),
+                        constraints: const BoxConstraints(),
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                        tooltip: 'Hari Sebelumnya',
+                        onPressed: () => _changeDate(-1),
+                      ),
+                      InkWell(
+                        onTap: _pickDate,
+                        borderRadius: BorderRadius.circular(8),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.calendar_today,
+                                size: 12,
+                                color: _isToday
+                                    ? Theme.of(context).colorScheme.primary
+                                    : Colors.white70,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                _isToday
+                                    ? 'Hari Ini'
+                                    : '${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: _isToday
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.chevron_right, size: 20),
+                        constraints: const BoxConstraints(),
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                        tooltip: 'Hari Berikutnya',
+                        onPressed: () => _changeDate(1),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -461,12 +557,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 class LogMealSheet extends StatefulWidget {
   final String initialSession;
   final List<String> sessions;
+  final DateTime selectedDate;
   final VoidCallback onSaved;
 
   const LogMealSheet({
     super.key,
     required this.initialSession,
     required this.sessions,
+    required this.selectedDate,
     required this.onSaved,
   });
 
@@ -511,6 +609,7 @@ class _LogMealSheetState extends State<LogMealSheet> {
       food: _selectedFood!,
       mealSession: _currentSession,
       portionMultiplier: _portion,
+      date: widget.selectedDate,
     );
     widget.onSaved();
     if (mounted) Navigator.pop(context);
