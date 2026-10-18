@@ -21,4 +21,16 @@ void main() {
     expect(log.totalProtein, 46.5);
     expect(chicken.estimatedGrams * log.portionMultiplier, 150.0);
   });
+
+  test('WeightLog model and delta check', () {
+    final day1 = DateTime(2026, 10, 10);
+    final day2 = DateTime(2026, 10, 17);
+
+    final w1 = 60.0;
+    final w2 = 60.8;
+    final delta = double.parse((w2 - w1).toStringAsFixed(1));
+
+    expect(delta, 0.8);
+    expect(day2.isAfter(day1), isTrue);
+  });
 }

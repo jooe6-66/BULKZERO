@@ -4,6 +4,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/food_item.dart';
 import '../models/meal_log.dart';
 import '../models/user_settings.dart';
+import '../models/weight_log.dart';
 import '../data/dkpi_foods.dart';
 
 class DbService {
@@ -12,7 +13,7 @@ class DbService {
   static Future<void> init() async {
     final dir = await getApplicationDocumentsDirectory();
     isar = await Isar.open(
-      [FoodItemSchema, MealLogSchema, UserSettingsSchema],
+      [FoodItemSchema, MealLogSchema, UserSettingsSchema, WeightLogSchema],
       directory: dir.path,
       name: 'bulking_db',
     );
@@ -155,6 +156,60 @@ class DbService {
 
     await isar.writeTxn(() async {
       await isar.foodItems.put(food);
+    });
+  }
+
+  static Future<void> updateMealLogPortion(Id id, double newMultiplier) async {
+    final log = await isar.mealLogs.get(id);
+    if (log == null) return;
+    log.portionMultiplier = newMultiplier;
+    await isar.writeTxn(() async {
+      await isar.mealLogs.put(log);
+    });
+  }
+
+  static Future<int> copySessionFromYesterday(String session, DateTime targetDate) async {
+    final yesterday = targetDate.subtract(const Duration(days: 1));
+    final yesterdayLogs = await getLogsForDay(yesterday);
+    final sessionLogs = yesterdayLogs.where((l) => l.mealSession == session).toList();
+    if (sessionLogs.isEmpty) return 0;
+
+    for (final oldLog in sessionLogs) {
+      if (oldLog.foodItem.value != null) {
+        await addMealLog(
+          food: oldLog.foodItem.value!,
+          mealSession: session,
+          portionMultiplier: oldLog.portionMultiplier,
+          date: targetDate,
+        );
+      }
+    }
+    return sessionLogs.length;
+  }
+
+  static Future<void> addWeightLog(double weight, DateTime date) async {
+    final log = WeightLog()
+      ..date = date
+      ..weight = weight;
+
+    await isar.writeTxn(() async {
+      await isar.weightLogs.put(log);
+    });
+
+    final current = await getSettings();
+    current.weight = weight;
+    await isar.writeTxn(() async {
+      await isar.userSettings.put(current);
+    });
+  }
+
+  static Future<List<WeightLog>> getWeightLogs() async {
+    return isar.weightLogs.where().sortByDateDesc().findAll();
+  }
+
+  static Future<void> deleteWeightLog(Id id) async {
+    await isar.writeTxn(() async {
+      await isar.weightLogs.delete(id);
     });
   }
 }

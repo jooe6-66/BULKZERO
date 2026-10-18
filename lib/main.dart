@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'models/food_item.dart';
 import 'models/meal_log.dart';
+import 'models/weight_log.dart';
 import 'services/db_service.dart';
 
 void main() async {
@@ -260,6 +261,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadLogs();
   }
 
+  Future<void> _copyYesterdaySession(String session) async {
+    final count = await DbService.copySessionFromYesterday(session, _selectedDate);
+    if (!mounted) return;
+    if (count == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Tidak ada menu $session di hari kemarin.')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Berhasil menyalin $count menu $session dari kemarin!')),
+      );
+      _loadLogs();
+    }
+  }
+
+  void _openEditPortionDialog(MealLog log) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1F232B),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => EditPortionSheet(
+        log: log,
+        onSaved: _loadLogs,
+      ),
+    );
+  }
+
+  void _openWeightLogSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1F232B),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => WeightLogSheet(
+        currentWeight: _userWeight,
+        onWeightUpdated: (newWeight) {
+          setState(() {
+            _userWeight = newWeight;
+          });
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -279,6 +329,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.monitor_weight_outlined),
+            tooltip: 'Timbangan Berat Badan',
+            onPressed: _openWeightLogSheet,
+          ),
           IconButton(
             icon: const Icon(Icons.person_outline),
             tooltip: 'Profil & BMI',
@@ -548,6 +603,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         fontWeight: FontWeight.w500,
                       ),
                     ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.history, size: 20),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      tooltip: 'Salin menu kemarin ke $session',
+                      onPressed: () => _copyYesterdaySession(session),
+                    ),
                     const SizedBox(width: 6),
                     IconButton(
                       icon: const Icon(Icons.add, size: 20),
@@ -569,36 +632,50 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   : log.portionMultiplier.toString();
 
               return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            food?.name ?? 'Makanan',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                            ),
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => _openEditPortionDialog(log),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                food?.name ?? 'Makanan',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              Text(
+                                '$multiplierStr ${food?.portionUnit ?? 'porsi'} (~${estGram.toInt()}g) • ${log.totalCalories.toInt()} kkal • ${log.totalProtein.toStringAsFixed(1)}g P',
+                                style: const TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
                           ),
-                          Text(
-                            '$multiplierStr ${food?.portionUnit ?? 'porsi'} (~${estGram.toInt()}g) • ${log.totalCalories.toInt()} kkal • ${log.totalProtein.toStringAsFixed(1)}g P',
-                            style: const TextStyle(
-                              color: Colors.white54,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          color: Colors.white54,
+                          tooltip: 'Ubah Porsi',
+                          onPressed: () => _openEditPortionDialog(log),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                          color: Colors.redAccent.withValues(alpha: 0.7),
+                          tooltip: 'Hapus Log',
+                          onPressed: () => _deleteLog(log),
+                        ),
+                      ],
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline, size: 18),
-                      color: Colors.redAccent.withValues(alpha: 0.7),
-                      onPressed: () => _deleteLog(log),
-                    ),
-                  ],
+                  ),
                 ),
               );
             }),
@@ -1339,6 +1416,404 @@ class _ProfileDialogState extends State<ProfileDialog> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class EditPortionSheet extends StatefulWidget {
+  final MealLog log;
+  final VoidCallback onSaved;
+
+  const EditPortionSheet({
+    super.key,
+    required this.log,
+    required this.onSaved,
+  });
+
+  @override
+  State<EditPortionSheet> createState() => _EditPortionSheetState();
+}
+
+class _EditPortionSheetState extends State<EditPortionSheet> {
+  late double _portion;
+
+  @override
+  void initState() {
+    super.initState();
+    _portion = widget.log.portionMultiplier;
+  }
+
+  void _adjustPortion(double delta) {
+    setState(() {
+      final next = _portion + delta;
+      if (next >= 0.25) {
+        _portion = double.parse(next.toStringAsFixed(2));
+      }
+    });
+  }
+
+  Future<void> _save() async {
+    await DbService.updateMealLogPortion(widget.log.id, _portion);
+    widget.onSaved();
+    if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final food = widget.log.foodItem.value;
+    final cal = ((food?.calories ?? 0.0) * _portion).toInt();
+    final pro = ((food?.protein ?? 0.0) * _portion).toStringAsFixed(1);
+    final carbs = ((food?.carbs ?? 0.0) * _portion).toStringAsFixed(1);
+    final fat = ((food?.fat ?? 0.0) * _portion).toStringAsFixed(1);
+    final gram = ((food?.estimatedGrams ?? 0.0) * _portion).toInt();
+
+    final portionPresets = [0.5, 1.0, 1.5, 2.0, 3.0];
+
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Ubah Porsi Makanan',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF262A32),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        food?.name ?? 'Makanan',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${food?.portionUnit ?? 'porsi'} (~${food?.estimatedGrams.toInt() ?? 0}g standar)',
+                        style: const TextStyle(color: Colors.white54, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  '$cal kkal',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text('Jumlah Porsi:', style: TextStyle(fontSize: 13, color: Colors.white70)),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton.filledTonal(
+                icon: const Icon(Icons.remove),
+                onPressed: () => _adjustPortion(-0.25),
+              ),
+              const SizedBox(width: 16),
+              Text(
+                '${_portion == _portion.roundToDouble() ? _portion.toInt() : _portion}x',
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(width: 16),
+              IconButton.filledTonal(
+                icon: const Icon(Icons.add),
+                onPressed: () => _adjustPortion(0.25),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Center(
+            child: Wrap(
+              spacing: 8,
+              children: portionPresets.map((p) {
+                final isSelected = (_portion - p).abs() < 0.05;
+                return ChoiceChip(
+                  label: Text('${p == p.roundToDouble() ? p.toInt() : p}x'),
+                  selected: isSelected,
+                  onSelected: (_) => setState(() => _portion = p),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF16191E),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                Text('P: ${pro}g', style: const TextStyle(color: Color(0xFF4CAF50), fontWeight: FontWeight.bold, fontSize: 13)),
+                Text('K: ${carbs}g', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                Text('L: ${fat}g', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                Text('~${gram}g', style: const TextStyle(color: Colors.white54, fontSize: 13)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: _save,
+              child: const Text('Simpan Porsi', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class WeightLogSheet extends StatefulWidget {
+  final double currentWeight;
+  final ValueChanged<double> onWeightUpdated;
+
+  const WeightLogSheet({
+    super.key,
+    required this.currentWeight,
+    required this.onWeightUpdated,
+  });
+
+  @override
+  State<WeightLogSheet> createState() => _WeightLogSheetState();
+}
+
+class _WeightLogSheetState extends State<WeightLogSheet> {
+  final TextEditingController _weightCtrl = TextEditingController();
+  List<WeightLog> _logs = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.currentWeight > 0) {
+      _weightCtrl.text = widget.currentWeight.toStringAsFixed(1);
+    }
+    _loadLogs();
+  }
+
+  Future<void> _loadLogs() async {
+    final list = await DbService.getWeightLogs();
+    if (mounted) {
+      setState(() {
+        _logs = list;
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _saveWeight() async {
+    final text = _weightCtrl.text.replaceAll(',', '.').trim();
+    final val = double.tryParse(text);
+    if (val == null || val <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Masukkan angka berat badan yang valid')),
+      );
+      return;
+    }
+
+    await DbService.addWeightLog(val, DateTime.now());
+    widget.onWeightUpdated(val);
+    await _loadLogs();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Berat badan ${val.toStringAsFixed(1)} kg berhasil dicatat!')),
+      );
+    }
+  }
+
+  Future<void> _deleteWeight(WeightLog log) async {
+    await DbService.deleteWeightLog(log.id);
+    await _loadLogs();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.75,
+      ),
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.monitor_weight, color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Log Berat Badan',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Catat berat badan berkala untuk memantau progres bulking.',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _weightCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Berat Badan Hari Ini',
+                    suffixText: 'kg',
+                    prefixIcon: Icon(Icons.fitness_center, size: 18),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: _saveWeight,
+                child: const Text('Catat', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'Riwayat Timbangan',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white70),
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _logs.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'Belum ada catatan timbangan.',
+                          style: TextStyle(color: Colors.white38),
+                        ),
+                      )
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: _logs.length,
+                        separatorBuilder: (_, _) => const Divider(height: 1, color: Color(0xFF262A32)),
+                        itemBuilder: (ctx, index) {
+                          final log = _logs[index];
+                          double? delta;
+                          if (index + 1 < _logs.length) {
+                            delta = log.weight - _logs[index + 1].weight;
+                          }
+
+                          final dateStr =
+                              '${log.date.day}/${log.date.month}/${log.date.year} ${log.date.hour.toString().padLeft(2, '0')}:${log.date.minute.toString().padLeft(2, '0')}';
+
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(
+                              '${log.weight.toStringAsFixed(1)} kg',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                            subtitle: Text(
+                              dateStr,
+                              style: const TextStyle(fontSize: 12, color: Colors.white54),
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (delta != null)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: delta > 0
+                                          ? Colors.green.withValues(alpha: 0.2)
+                                          : delta < 0
+                                              ? Colors.redAccent.withValues(alpha: 0.2)
+                                              : Colors.grey.withValues(alpha: 0.2),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      delta > 0
+                                          ? '+${delta.toStringAsFixed(1)} kg'
+                                          : '${delta.toStringAsFixed(1)} kg',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: delta > 0
+                                            ? Colors.greenAccent
+                                            : delta < 0
+                                                ? Colors.redAccent
+                                                : Colors.white70,
+                                      ),
+                                    ),
+                                  ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline, size: 18),
+                                  color: Colors.white38,
+                                  onPressed: () => _deleteWeight(log),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+          ),
+        ],
+      ),
     );
   }
 }
