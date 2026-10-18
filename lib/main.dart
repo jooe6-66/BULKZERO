@@ -63,6 +63,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<MealLog> _logs = [];
   bool _isLoading = true;
 
+  String _userName = '';
+  double _userWeight = 60.0;
+  double _userHeight = 170.0;
+  int _userAge = 22;
+
   // Bulking targets (loaded from Isar)
   double _targetCalories = 2500;
   double _targetProtein = 140;
@@ -84,11 +89,46 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final settings = await DbService.getSettings();
     if (mounted) {
       setState(() {
+        _userName = settings.name;
+        _userWeight = settings.weight;
+        _userHeight = settings.height;
+        _userAge = settings.age;
         _targetCalories = settings.targetCalories;
         _targetProtein = settings.targetProtein;
       });
+      if (!settings.isProfileCompleted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _openProfileDialog(isOnboarding: true);
+        });
+      }
     }
     _loadLogs();
+  }
+
+  void _openProfileDialog({bool isOnboarding = false}) {
+    showDialog(
+      context: context,
+      barrierDismissible: !isOnboarding,
+      builder: (ctx) => ProfileDialog(
+        initialName: _userName,
+        initialWeight: _userWeight,
+        initialHeight: _userHeight,
+        initialAge: _userAge,
+        initialCalories: _targetCalories,
+        initialProtein: _targetProtein,
+        isOnboarding: isOnboarding,
+        onSaved: (name, weight, height, age, cal, pro) {
+          setState(() {
+            _userName = name;
+            _userWeight = weight;
+            _userHeight = height;
+            _userAge = age;
+            _targetCalories = cal;
+            _targetProtein = pro;
+          });
+        },
+      ),
+    );
   }
 
   Future<void> _loadLogs() async {
@@ -224,14 +264,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'BULKJOOE',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'BULKJOOE',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+            if (_userName.isNotEmpty)
+              Text(
+                'Halo, $_userName',
+                style: const TextStyle(fontSize: 12, color: Colors.white70),
+              ),
+          ],
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.person_outline),
+            tooltip: 'Profil & BMI',
+            onPressed: () => _openProfileDialog(isOnboarding: false),
+          ),
+          IconButton(
             icon: const Icon(Icons.tune),
-            tooltip: 'Ubah Target',
+            tooltip: 'Ubah Target Cepat',
             onPressed: _openEditTargetDialog,
           ),
           IconButton(
@@ -965,3 +1020,326 @@ class _AddCustomFoodDialogState extends State<AddCustomFoodDialog> {
     );
   }
 }
+
+class ProfileDialog extends StatefulWidget {
+  final String initialName;
+  final double initialWeight;
+  final double initialHeight;
+  final int initialAge;
+  final double initialCalories;
+  final double initialProtein;
+  final bool isOnboarding;
+  final void Function(
+    String name,
+    double weight,
+    double height,
+    int age,
+    double calories,
+    double protein,
+  ) onSaved;
+
+  const ProfileDialog({
+    super.key,
+    required this.initialName,
+    required this.initialWeight,
+    required this.initialHeight,
+    required this.initialAge,
+    required this.initialCalories,
+    required this.initialProtein,
+    required this.isOnboarding,
+    required this.onSaved,
+  });
+
+  @override
+  State<ProfileDialog> createState() => _ProfileDialogState();
+}
+
+class _ProfileDialogState extends State<ProfileDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _weightCtrl;
+  late final TextEditingController _heightCtrl;
+  late final TextEditingController _ageCtrl;
+  late final TextEditingController _calCtrl;
+  late final TextEditingController _proCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl = TextEditingController(text: widget.initialName);
+    _weightCtrl = TextEditingController(
+      text: widget.initialWeight > 0 ? widget.initialWeight.toStringAsFixed(0) : '60',
+    );
+    _heightCtrl = TextEditingController(
+      text: widget.initialHeight > 0 ? widget.initialHeight.toStringAsFixed(0) : '170',
+    );
+    _ageCtrl = TextEditingController(
+      text: widget.initialAge > 0 ? widget.initialAge.toString() : '22',
+    );
+    _calCtrl = TextEditingController(
+      text: widget.initialCalories.toInt().toString(),
+    );
+    _proCtrl = TextEditingController(
+      text: widget.initialProtein.toInt().toString(),
+    );
+  }
+
+  void _calculateTargets() {
+    final w = double.tryParse(_weightCtrl.text) ?? 60.0;
+    final h = double.tryParse(_heightCtrl.text) ?? 170.0;
+    final a = int.tryParse(_ageCtrl.text) ?? 22;
+
+    if (w <= 0 || h <= 0 || a <= 0) return;
+
+    // Mifflin-St Jeor + bulking surplus (400 kcal) & 2.0g protein / kg
+    final bmr = (10 * w) + (6.25 * h) - (5 * a) + 5;
+    final tdee = bmr * 1.4;
+    final bulkingCal = (tdee + 400).round();
+    final bulkingPro = (w * 2.0).round();
+
+    setState(() {
+      _calCtrl.text = bulkingCal.toString();
+      _proCtrl.text = bulkingPro.toString();
+    });
+  }
+
+  double get _currentBmi {
+    final w = double.tryParse(_weightCtrl.text) ?? 0;
+    final h = double.tryParse(_heightCtrl.text) ?? 0;
+    if (w <= 0 || h <= 0) return 0;
+    final hm = h / 100;
+    return w / (hm * hm);
+  }
+
+  String get _bmiCategory {
+    final bmi = _currentBmi;
+    if (bmi <= 0) return '-';
+    if (bmi < 18.5) return 'Underweight';
+    if (bmi < 25.0) return 'Normal';
+    if (bmi < 30.0) return 'Overweight';
+    return 'Obesitas';
+  }
+
+  Color get _bmiCategoryColor {
+    final bmi = _currentBmi;
+    if (bmi < 18.5) return Colors.blueAccent;
+    if (bmi < 25.0) return const Color(0xFF4CAF50);
+    if (bmi < 30.0) return const Color(0xFFE5A93C);
+    return Colors.redAccent;
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    final name = _nameCtrl.text.trim();
+    final weight = double.tryParse(_weightCtrl.text) ?? 60;
+    final height = double.tryParse(_heightCtrl.text) ?? 170;
+    final age = int.tryParse(_ageCtrl.text) ?? 22;
+    final cal = double.tryParse(_calCtrl.text) ?? 2500;
+    final pro = double.tryParse(_proCtrl.text) ?? 140;
+
+    await DbService.saveProfile(
+      name: name,
+      weight: weight,
+      height: height,
+      age: age,
+      targetCalories: cal,
+      targetProtein: pro,
+    );
+
+    widget.onSaved(name, weight, height, age, cal, pro);
+    if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bmi = _currentBmi;
+
+    return AlertDialog(
+      backgroundColor: const Color(0xFF1F232B),
+      title: Row(
+        children: [
+          Icon(
+            Icons.fitness_center,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              widget.isOnboarding ? 'Selamat Datang di BULKJOOE' : 'Profil & Target Bulking',
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (widget.isOnboarding)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    'Isi data fisik kamu untuk menghitung BMI dan target kalori & protein bulking secara otomatis.',
+                    style: TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                ),
+              TextFormField(
+                controller: _nameCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Nama Panggilan',
+                  hintText: 'Misal: Jooe',
+                ),
+                validator: (val) =>
+                    val == null || val.trim().isEmpty ? 'Nama wajib diisi' : null,
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _weightCtrl,
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) {
+                        setState(() {});
+                        _calculateTargets();
+                      },
+                      decoration: const InputDecoration(
+                        labelText: 'Berat Badan',
+                        suffixText: 'kg',
+                      ),
+                      validator: (val) =>
+                          val == null || val.trim().isEmpty ? 'Wajib' : null,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _heightCtrl,
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) {
+                        setState(() {});
+                        _calculateTargets();
+                      },
+                      decoration: const InputDecoration(
+                        labelText: 'Tinggi Badan',
+                        suffixText: 'cm',
+                      ),
+                      validator: (val) =>
+                          val == null || val.trim().isEmpty ? 'Wajib' : null,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _ageCtrl,
+                keyboardType: TextInputType.number,
+                onChanged: (_) {
+                  setState(() {});
+                  _calculateTargets();
+                },
+                decoration: const InputDecoration(
+                  labelText: 'Umur',
+                  suffixText: 'tahun',
+                ),
+                validator: (val) =>
+                    val == null || val.trim().isEmpty ? 'Wajib' : null,
+              ),
+              const SizedBox(height: 14),
+              // BMI & Bulking Calculation Card
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF262A32),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Estimasi BMI:',
+                          style: TextStyle(fontSize: 12, color: Colors.white70),
+                        ),
+                        Text(
+                          bmi > 0 ? '${bmi.toStringAsFixed(1)} • $_bmiCategory' : '-',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: _bmiCategoryColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 14),
+                    const Text(
+                      'Rekomendasi Target Bulking:',
+                      style: TextStyle(fontSize: 11, color: Colors.white54),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _calCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Target Kalori',
+                              suffixText: 'kkal',
+                              isDense: true,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _proCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Target Protein',
+                              suffixText: 'g',
+                              isDense: true,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        if (!widget.isOnboarding)
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Batal'),
+          ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            foregroundColor: Colors.black,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          ),
+          onPressed: _submit,
+          child: Text(
+            widget.isOnboarding ? 'Mulai Bulking' : 'Simpan Profil',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ),
+      ],
+    );
+  }
+}
+

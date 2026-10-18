@@ -30,9 +30,30 @@ class DbService {
   }
 
   static Future<void> saveSettings(double calories, double protein) async {
+    final current = await getSettings();
+    current.targetCalories = calories;
+    current.targetProtein = protein;
+    await isar.writeTxn(() async {
+      await isar.userSettings.put(current);
+    });
+  }
+
+  static Future<void> saveProfile({
+    required String name,
+    required double weight,
+    required double height,
+    required int age,
+    required double targetCalories,
+    required double targetProtein,
+  }) async {
     final settings = UserSettings()
-      ..targetCalories = calories
-      ..targetProtein = protein;
+      ..name = name.trim()
+      ..weight = weight
+      ..height = height
+      ..age = age
+      ..targetCalories = targetCalories
+      ..targetProtein = targetProtein
+      ..isProfileCompleted = true;
     await isar.writeTxn(() async {
       await isar.userSettings.put(settings);
     });
