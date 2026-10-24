@@ -35,8 +35,10 @@ class DbService {
   static Future<void> saveProfile({
     required String name,
     required double weight,
+    required double targetWeight,
     required double height,
     required int age,
+    required int activityLevel,
     required double targetCalories,
     required double targetProtein,
   }) async {
@@ -44,8 +46,10 @@ class DbService {
     final settings = UserSettings()
       ..name = name.trim()
       ..weight = weight
+      ..targetWeight = targetWeight
       ..height = height
       ..age = age
+      ..activityLevel = activityLevel
       ..targetCalories = targetCalories
       ..targetProtein = targetProtein
       ..isProfileCompleted = true
@@ -170,6 +174,32 @@ class DbService {
     return logs;
   }
 
+  /// Daily calorie totals for the 7 days ending on [endDate] (oldest first).
+  static Future<List<({DateTime date, double calories})>> getWeeklyCalories(DateTime endDate) async {
+    final endDay = DateTime(endDate.year, endDate.month, endDate.day);
+    final startDay = endDay.subtract(const Duration(days: 6));
+    final upper = endDay.add(const Duration(days: 1));
+
+    final logs = await isar.mealLogs
+        .filter()
+        .dateBetween(startDay, upper, includeUpper: false)
+        .findAll();
+    for (final log in logs) {
+      await log.foodItem.load();
+    }
+
+    return [
+      for (var i = 0; i < 7; i++)
+        () {
+          final d = startDay.add(Duration(days: i));
+          final cals = logs
+              .where((l) => l.date.year == d.year && l.date.month == d.month && l.date.day == d.day)
+              .fold(0.0, (acc, item) => acc + item.totalCalories);
+          return (date: d, calories: cals);
+        }(),
+    ];
+  }
+
   static Future<void> addMealLog({
     required FoodItem food,
     required String mealSession,
@@ -195,6 +225,7 @@ class DbService {
   }
 
   static Future<void> addCustomFood({
+    Id? id,
     required String name,
     required String portionUnit,
     required double estimatedGrams,
@@ -214,9 +245,24 @@ class DbService {
       ..fat = fat
       ..isSnack = isSnack
       ..isCustom = true;
+    if (id != null) food.id = id;
 
     await isar.writeTxn(() async {
       await isar.foodItems.put(food);
+    });
+  }
+
+  static Future<void> deleteCustomFood(Id id) async {
+    final logs = await isar.mealLogs
+        .filter()
+        .foodItem((q) => q.idEqualTo(id))
+        .findAll();
+    final logIds = logs.map((l) => l.id).toList();
+    await isar.writeTxn(() async {
+      if (logIds.isNotEmpty) {
+        await isar.mealLogs.deleteAll(logIds);
+      }
+      await isar.foodItems.delete(id);
     });
   }
 
@@ -272,5 +318,13 @@ class DbService {
     await isar.writeTxn(() async {
       await isar.weightLogs.delete(id);
     });
+    final latest = await isar.weightLogs.where().sortByDateDesc().findFirst();
+    if (latest != null) {
+      final current = await getSettings();
+      current.weight = latest.weight;
+      await isar.writeTxn(() async {
+        await isar.userSettings.put(current);
+      });
+    }
   }
 }

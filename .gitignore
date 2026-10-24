@@ -43,12 +43,18 @@ app.*.map.json
 .gradle/
 android/.gradle/
 android/build/
+android/app/build/
 /android/app/debug
 /android/app/profile
 /android/app/release
 
-# Local skill
+# Local skill & agent rules
 skill.md
+SKILL.md
+AGENTS.md
+agents.md
+GEMINI.md
+gemini.md
 
 # Widget Preview related
 .widget_preview/

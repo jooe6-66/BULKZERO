@@ -34,6 +34,8 @@ String encodeBackup({
       'targetProtein': settings.targetProtein,
       'isProfileCompleted': settings.isProfileCompleted,
       'remindersEnabled': settings.remindersEnabled,
+      'targetWeight': settings.targetWeight,
+      'activityLevel': settings.activityLevel,
     },
     'foods': [
       for (final f in foods)
@@ -85,7 +87,9 @@ BackupData decodeBackup(String source) {
       ..targetCalories = d(s['targetCalories'])
       ..targetProtein = d(s['targetProtein'])
       ..isProfileCompleted = s['isProfileCompleted'] as bool
-      ..remindersEnabled = s['remindersEnabled'] as bool? ?? false;
+      ..remindersEnabled = s['remindersEnabled'] as bool? ?? false
+      ..targetWeight = s['targetWeight'] != null ? d(s['targetWeight']) : 68.0
+      ..activityLevel = s['activityLevel'] as int? ?? 1;
 
     final foods = [
       for (final f in (root['foods'] as List).cast<Map<String, dynamic>>())

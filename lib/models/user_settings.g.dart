@@ -17,53 +17,63 @@ const UserSettingsSchema = CollectionSchema(
   name: r'UserSettings',
   id: 4939698790990493221,
   properties: {
-    r'age': PropertySchema(
+    r'activityLevel': PropertySchema(
       id: 0,
+      name: r'activityLevel',
+      type: IsarType.long,
+    ),
+    r'age': PropertySchema(
+      id: 1,
       name: r'age',
       type: IsarType.long,
     ),
     r'bmi': PropertySchema(
-      id: 1,
+      id: 2,
       name: r'bmi',
       type: IsarType.double,
     ),
     r'bmiCategory': PropertySchema(
-      id: 2,
+      id: 3,
       name: r'bmiCategory',
       type: IsarType.string,
     ),
     r'height': PropertySchema(
-      id: 3,
+      id: 4,
       name: r'height',
       type: IsarType.double,
     ),
     r'isProfileCompleted': PropertySchema(
-      id: 4,
+      id: 5,
       name: r'isProfileCompleted',
       type: IsarType.bool,
     ),
     r'name': PropertySchema(
-      id: 5,
+      id: 6,
       name: r'name',
       type: IsarType.string,
     ),
     r'remindersEnabled': PropertySchema(
-      id: 6,
+      id: 7,
       name: r'remindersEnabled',
       type: IsarType.bool,
     ),
     r'targetCalories': PropertySchema(
-      id: 7,
+      id: 8,
       name: r'targetCalories',
       type: IsarType.double,
     ),
     r'targetProtein': PropertySchema(
-      id: 8,
+      id: 9,
       name: r'targetProtein',
       type: IsarType.double,
     ),
+    r'targetWeight': PropertySchema(
+      id: 10,
+      name: r'targetWeight',
+      type: IsarType.double,
+    ),
     r'weight': PropertySchema(
-      id: 9,
+      id: 11,
       name: r'weight',
       type: IsarType.double,
     )
@@ -99,16 +109,18 @@ void _userSettingsSerialize(
   List<int> offsets,
   Map<Type, List<int>> allOffsets,
 ) {
-  writer.writeLong(offsets[0], object.age);
-  writer.writeDouble(offsets[1], object.bmi);
-  writer.writeString(offsets[2], object.bmiCategory);
-  writer.writeDouble(offsets[3], object.height);
-  writer.writeBool(offsets[4], object.isProfileCompleted);
-  writer.writeString(offsets[5], object.name);
-  writer.writeBool(offsets[6], object.remindersEnabled);
-  writer.writeDouble(offsets[7], object.targetCalories);
-  writer.writeDouble(offsets[8], object.targetProtein);
-  writer.writeDouble(offsets[9], object.weight);
+  writer.writeLong(offsets[0], object.activityLevel);
+  writer.writeLong(offsets[1], object.age);
+  writer.writeDouble(offsets[2], object.bmi);
+  writer.writeString(offsets[3], object.bmiCategory);
+  writer.writeDouble(offsets[4], object.height);
+  writer.writeBool(offsets[5], object.isProfileCompleted);
+  writer.writeString(offsets[6], object.name);
+  writer.writeBool(offsets[7], object.remindersEnabled);
+  writer.writeDouble(offsets[8], object.targetCalories);
+  writer.writeDouble(offsets[9], object.targetProtein);
+  writer.writeDouble(offsets[10], object.targetWeight);
+  writer.writeDouble(offsets[11], object.weight);
 }
 
 UserSettings _userSettingsDeserialize(
@@ -118,15 +130,17 @@ UserSettings _userSettingsDeserialize(
   Map<Type, List<int>> allOffsets,
 ) {
   final object = UserSettings();
-  object.age = reader.readLong(offsets[0]);
-  object.height = reader.readDouble(offsets[3]);
+  object.activityLevel = reader.readLong(offsets[0]);
+  object.age = reader.readLong(offsets[1]);
+  object.height = reader.readDouble(offsets[4]);
   object.id = id;
-  object.isProfileCompleted = reader.readBool(offsets[4]);
-  object.name = reader.readString(offsets[5]);
-  object.remindersEnabled = reader.readBool(offsets[6]);
-  object.targetCalories = reader.readDouble(offsets[7]);
-  object.targetProtein = reader.readDouble(offsets[8]);
-  object.weight = reader.readDouble(offsets[9]);
+  object.isProfileCompleted = reader.readBool(offsets[5]);
+  object.name = reader.readString(offsets[6]);
+  object.remindersEnabled = reader.readBool(offsets[7]);
+  object.targetCalories = reader.readDouble(offsets[8]);
+  object.targetProtein = reader.readDouble(offsets[9]);
+  object.targetWeight = reader.readDouble(offsets[10]);
+  object.weight = reader.readDouble(offsets[11]);
   return object;
 }
 
@@ -140,22 +154,26 @@ P _userSettingsDeserializeProp<P>(
     case 0:
       return (reader.readLong(offset)) as P;
     case 1:
-      return (reader.readDouble(offset)) as P;
+      return (reader.readLong(offset)) as P;
     case 2:
-      return (reader.readString(offset)) as P;
+      return (reader.readDouble(offset)) as P;
     case 3:
-      return (reader.readDouble(offset)) as P;
-    case 4:
-      return (reader.readBool(offset)) as P;
-    case 5:
       return (reader.readString(offset)) as P;
-    case 6:
-      return (reader.readBool(offset)) as P;
-    case 7:
+    case 4:
       return (reader.readDouble(offset)) as P;
+    case 5:
+      return (reader.readBool(offset)) as P;
+    case 6:
+      return (reader.readString(offset)) as P;
+    case 7:
+      return (reader.readBool(offset)) as P;
     case 8:
       return (reader.readDouble(offset)) as P;
     case 9:
+      return (reader.readDouble(offset)) as P;
+    case 10:
+      return (reader.readDouble(offset)) as P;
+    case 11:
       return (reader.readDouble(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -256,6 +274,62 @@ extension UserSettingsQueryWhere
 
 extension UserSettingsQueryFilter
     on QueryBuilder<UserSettings, UserSettings, QFilterCondition> {
+  QueryBuilder<UserSettings, UserSettings, QAfterFilterCondition>
+      activityLevelEqualTo(int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'activityLevel',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<UserSettings, UserSettings, QAfterFilterCondition>
+      activityLevelGreaterThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'activityLevel',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<UserSettings, UserSettings, QAfterFilterCondition>
+      activityLevelLessThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'activityLevel',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<UserSettings, UserSettings, QAfterFilterCondition>
+      activityLevelBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'activityLevel',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
   QueryBuilder<UserSettings, UserSettings, QAfterFilterCondition> ageEqualTo(
       int value) {
     return QueryBuilder.apply(this, (query) {
@@ -912,6 +986,72 @@ extension UserSettingsQueryFilter
     });
   }
 
+  QueryBuilder<UserSettings, UserSettings, QAfterFilterCondition>
+      targetWeightEqualTo(
+    double value, {
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'targetWeight',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<UserSettings, UserSettings, QAfterFilterCondition>
+      targetWeightGreaterThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'targetWeight',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<UserSettings, UserSettings, QAfterFilterCondition>
+      targetWeightLessThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'targetWeight',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<UserSettings, UserSettings, QAfterFilterCondition>
+      targetWeightBetween(
+    double lower,
+    double upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'targetWeight',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
   QueryBuilder<UserSettings, UserSettings, QAfterFilterCondition> weightEqualTo(
     double value, {
     double epsilon = Query.epsilon,
@@ -985,6 +1125,19 @@ extension UserSettingsQueryLinks
 
 extension UserSettingsQuerySortBy
     on QueryBuilder<UserSettings, UserSettings, QSortBy> {
+  QueryBuilder<UserSettings, UserSettings, QAfterSortBy> sortByActivityLevel() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'activityLevel', Sort.asc);
+    });
+  }
+
+  QueryBuilder<UserSettings, UserSettings, QAfterSortBy>
+      sortByActivityLevelDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'activityLevel', Sort.desc);
+    });
+  }
+
   QueryBuilder<UserSettings, UserSettings, QAfterSortBy> sortByAge() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'age', Sort.asc);
@@ -1101,6 +1254,19 @@ extension UserSettingsQuerySortBy
     });
   }
 
+  QueryBuilder<UserSettings, UserSettings, QAfterSortBy> sortByTargetWeight() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'targetWeight', Sort.asc);
+    });
+  }
+
+  QueryBuilder<UserSettings, UserSettings, QAfterSortBy>
+      sortByTargetWeightDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'targetWeight', Sort.desc);
+    });
+  }
+
   QueryBuilder<UserSettings, UserSettings, QAfterSortBy> sortByWeight() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'weight', Sort.asc);
@@ -1116,6 +1282,19 @@ extension UserSettingsQuerySortBy
 
 extension UserSettingsQuerySortThenBy
     on QueryBuilder<UserSettings, UserSettings, QSortThenBy> {
+  QueryBuilder<UserSettings, UserSettings, QAfterSortBy> thenByActivityLevel() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'activityLevel', Sort.asc);
+    });
+  }
+
+  QueryBuilder<UserSettings, UserSettings, QAfterSortBy>
+      thenByActivityLevelDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'activityLevel', Sort.desc);
+    });
+  }
+
   QueryBuilder<UserSettings, UserSettings, QAfterSortBy> thenByAge() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'age', Sort.asc);
@@ -1244,6 +1423,19 @@ extension UserSettingsQuerySortThenBy
     });
   }
 
+  QueryBuilder<UserSettings, UserSettings, QAfterSortBy> thenByTargetWeight() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'targetWeight', Sort.asc);
+    });
+  }
+
+  QueryBuilder<UserSettings, UserSettings, QAfterSortBy>
+      thenByTargetWeightDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'targetWeight', Sort.desc);
+    });
+  }
+
   QueryBuilder<UserSettings, UserSettings, QAfterSortBy> thenByWeight() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'weight', Sort.asc);
@@ -1259,6 +1451,13 @@ extension UserSettingsQuerySortThenBy
 
 extension UserSettingsQueryWhereDistinct
     on QueryBuilder<UserSettings, UserSettings, QDistinct> {
+  QueryBuilder<UserSettings, UserSettings, QDistinct>
+      distinctByActivityLevel() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'activityLevel');
+    });
+  }
+
   QueryBuilder<UserSettings, UserSettings, QDistinct> distinctByAge() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'age');
@@ -1319,6 +1518,12 @@ extension UserSettingsQueryWhereDistinct
     });
   }
 
+  QueryBuilder<UserSettings, UserSettings, QDistinct> distinctByTargetWeight() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'targetWeight');
+    });
+  }
+
   QueryBuilder<UserSettings, UserSettings, QDistinct> distinctByWeight() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'weight');
@@ -1331,6 +1536,12 @@ extension UserSettingsQueryProperty
   QueryBuilder<UserSettings, int, QQueryOperations> idProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'id');
+    });
+  }
+
+  QueryBuilder<UserSettings, int, QQueryOperations> activityLevelProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'activityLevel');
     });
   }
 
@@ -1388,6 +1599,12 @@ extension UserSettingsQueryProperty
   QueryBuilder<UserSettings, double, QQueryOperations> targetProteinProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'targetProtein');
+    });
+  }
+
+  QueryBuilder<UserSettings, double, QQueryOperations> targetWeightProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'targetWeight');
     });
   }
 

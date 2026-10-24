@@ -13,6 +13,8 @@ class UserSettings {
   double targetProtein = 140;
   bool isProfileCompleted = false;
   bool remindersEnabled = false;
+  double targetWeight = 68.0; // kg
+  int activityLevel = 1; // 0: Ringan, 1: Sedang (Gym 3-4x), 2: Aktif/Berat
 
   double get bmi {
     if (height <= 0) return 0;

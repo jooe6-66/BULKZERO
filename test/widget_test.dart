@@ -46,8 +46,10 @@ void main() {
     final settings = UserSettings()
       ..name = 'Budi'
       ..weight = 65
+      ..targetWeight = 72
       ..height = 172
       ..age = 24
+      ..activityLevel = 2
       ..targetCalories = 2800
       ..targetProtein = 150
       ..isProfileCompleted = true
@@ -82,6 +84,8 @@ void main() {
 
     final decoded = decodeBackup(jsonStr);
     expect(decoded.settings.name, 'Budi');
+    expect(decoded.settings.targetWeight, 72);
+    expect(decoded.settings.activityLevel, 2);
     expect(decoded.settings.remindersEnabled, isTrue);
     expect(decoded.foods.single.name, 'Telur Rebus');
     expect(decoded.mealLogs.single.foodId, 7);

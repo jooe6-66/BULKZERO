@@ -91,13 +91,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   String _userName = '';
   double _userWeight = 60.0;
+  double _targetWeight = 68.0;
   double _userHeight = 170.0;
   int _userAge = 22;
+  int _activityLevel = 1;
 
   // Bulking targets (loaded from Isar)
   double _targetCalories = 2500;
   double _targetProtein = 140;
   bool _remindersEnabled = false;
+  List<({DateTime date, double calories})> _weeklyCalories = [];
 
   static const List<String> _sessions = [
     'Makan 1',
@@ -120,8 +123,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       setState(() {
         _userName = settings.name;
         _userWeight = settings.weight;
+        _targetWeight = settings.targetWeight;
         _userHeight = settings.height;
         _userAge = settings.age;
+        _activityLevel = settings.activityLevel;
         _targetCalories = settings.targetCalories;
         _targetProtein = settings.targetProtein;
         _remindersEnabled = settings.remindersEnabled;
@@ -129,13 +134,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (settings.remindersEnabled) {
         NotificationService.setDailyReminders(true);
       }
-      if (!settings.isProfileCompleted) {
+        if (!settings.isProfileCompleted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _openProfileDialog(isOnboarding: true);
         });
       }
     }
-    _loadLogs();
+    await _loadLogs();
   }
 
   void _openProfileDialog({bool isOnboarding = false}) {
@@ -145,17 +150,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
       builder: (ctx) => ProfileDialog(
         initialName: _userName,
         initialWeight: _userWeight,
+        initialTargetWeight: _targetWeight,
         initialHeight: _userHeight,
         initialAge: _userAge,
+        initialActivityLevel: _activityLevel,
         initialCalories: _targetCalories,
         initialProtein: _targetProtein,
         isOnboarding: isOnboarding,
-        onSaved: (name, weight, height, age, cal, pro) {
+        onSaved: (name, weight, targetWeight, height, age, activity, cal, pro) {
           setState(() {
             _userName = name;
             _userWeight = weight;
+            _targetWeight = targetWeight;
             _userHeight = height;
             _userAge = age;
+            _activityLevel = activity;
             _targetCalories = cal;
             _targetProtein = pro;
           });
@@ -167,8 +176,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _loadLogs() async {
     setState(() => _isLoading = true);
     final logs = await DbService.getLogsForDay(_selectedDate);
+    final weekly = await DbService.getWeeklyCalories(_selectedDate);
+    if (!mounted) return;
     setState(() {
       _logs = logs;
+      _weeklyCalories = weekly;
       _isLoading = false;
     });
   }
@@ -294,6 +306,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       isScrollControlled: true,
       builder: (ctx) => WeightLogSheet(
         currentWeight: _userWeight,
+        targetWeight: _targetWeight,
         onWeightUpdated: (newWeight) {
           setState(() {
             _userWeight = newWeight;
@@ -314,6 +327,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         },
         onRestored: () async {
           await _initData();
+          await NotificationService.setDailyReminders(_remindersEnabled);
         },
       ),
     );
@@ -333,6 +347,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             if (_userName.isNotEmpty)
               Text(
                 'Halo, $_userName',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 12, color: Colors.white70),
               ),
           ],
@@ -402,10 +418,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Ringkasan Nutrisi',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                const Flexible(
+                  child: Text(
+                    'Ringkasan Nutrisi',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
                 ),
+                const SizedBox(width: 8),
                 Container(
                   decoration: BoxDecoration(
                     color: const Color(0xFF232730),
@@ -415,6 +435,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
+                        visualDensity: VisualDensity.compact,
                         icon: const Icon(Icons.chevron_left, size: 20),
                         tooltip: 'Hari Sebelumnya',
                         onPressed: () => _changeDate(-1),
@@ -423,7 +444,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         onTap: _pickDate,
                         borderRadius: BorderRadius.circular(8),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                           child: Row(
                             children: [
                               Icon(
@@ -451,6 +472,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                       ),
                       IconButton(
+                        visualDensity: VisualDensity.compact,
                         icon: const Icon(Icons.chevron_right, size: 20),
                         tooltip: 'Hari Berikutnya',
                         onPressed: () => _changeDate(1),
@@ -495,9 +517,129 @@ class _DashboardScreenState extends State<DashboardScreen> {
               'Karbo ${totalCarbs.toStringAsFixed(1)}g • Lemak ${totalFat.toStringAsFixed(1)}g',
               style: const TextStyle(fontSize: 12, color: Colors.white70),
             ),
+            if (_weeklyCalories.isNotEmpty) ...[
+              const Divider(height: 24),
+              _buildWeeklySummaryRow(),
+            ],
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildWeeklySummaryRow() {
+    const dayLabels = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+    final loggedDays = _weeklyCalories.where((d) => d.calories > 0).toList();
+    final avgCal = loggedDays.isEmpty
+        ? 0
+        : (loggedDays.fold(0.0, (a, b) => a + b.calories) / loggedDays.length).round();
+
+    var streak = 0;
+    final daysForStreak = _weeklyCalories.isNotEmpty &&
+            _targetCalories > 0 &&
+            _weeklyCalories.last.calories < _targetCalories * 0.9
+        ? _weeklyCalories.sublist(0, _weeklyCalories.length - 1).reversed
+        : _weeklyCalories.reversed;
+    for (final d in daysForStreak) {
+      if (_targetCalories > 0 && d.calories >= _targetCalories * 0.9) {
+        streak++;
+      } else {
+        break;
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Flexible(
+              child: Text(
+                '7 Hari Terakhir • Rata-rata $avgCal kkal/hari',
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w500),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: streak > 0
+                    ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.18)
+                    : const Color(0xFF232730),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '🔥 Streak $streak hari',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: streak > 0 ? Theme.of(context).colorScheme.primary : Colors.white60,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: _weeklyCalories.map((entry) {
+            final ratio = _targetCalories > 0
+                ? (entry.calories / _targetCalories).clamp(0.0, 1.0)
+                : 0.0;
+            final hit = _targetCalories > 0 && entry.calories >= _targetCalories * 0.9;
+            final isSelectedDay = entry.date.year == _selectedDate.year &&
+                entry.date.month == _selectedDate.month &&
+                entry.date.day == _selectedDate.day;
+            final label = dayLabels[entry.date.weekday - 1];
+
+            return GestureDetector(
+              onTap: () {
+                setState(() => _selectedDate = entry.date);
+                _loadLogs();
+              },
+              child: Column(
+                children: [
+                  Container(
+                    width: 28,
+                    height: 32,
+                    alignment: Alignment.bottomCenter,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF232730),
+                      borderRadius: BorderRadius.circular(6),
+                      border: isSelectedDay
+                          ? Border.all(color: Theme.of(context).colorScheme.primary, width: 1)
+                          : null,
+                    ),
+                    child: FractionallySizedBox(
+                      heightFactor: entry.calories > 0 ? ratio.clamp(0.15, 1.0) : 0.0,
+                      widthFactor: 1.0,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: hit
+                              ? const Color(0xFF4CAF50)
+                              : Theme.of(context).colorScheme.primary.withValues(alpha: 0.7),
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: isSelectedDay ? FontWeight.bold : FontWeight.normal,
+                      color: isSelectedDay ? Theme.of(context).colorScheme.primary : Colors.white60,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
+      ],
     );
   }
 
@@ -541,26 +683,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ],
           ),
           const SizedBox(height: 8),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                current,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  current,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                '/ $target',
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: Colors.white70,
+                const SizedBox(width: 4),
+                Text(
+                  '/ $target',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Colors.white70,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: 8),
           ClipRRect(
@@ -659,7 +805,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                       ),
                       Text(
-                        '${sessionCal.toInt()} kkal • ${sessionPro.toStringAsFixed(1)}g pro',
+                        '${sessionCal.round()} kkal • ${sessionPro.toStringAsFixed(1)}g pro',
                         style: const TextStyle(
                           color: Colors.white70,
                           fontSize: 12,
@@ -702,10 +848,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ...sessionLogs.map((log) {
               final food = log.foodItem.value;
-              final estGram = (food?.estimatedGrams ?? 0) * log.portionMultiplier;
-              final multiplierStr = log.portionMultiplier % 1 == 0
-                  ? log.portionMultiplier.toInt().toString()
-                  : log.portionMultiplier.toString();
+              final estGram = ((food?.estimatedGrams ?? 0) * log.portionMultiplier).round();
+              final roundedMult = (log.portionMultiplier * 100).round() / 100;
+              final multiplierStr = roundedMult % 1 == 0
+                  ? roundedMult.toInt().toString()
+                  : roundedMult.toString();
 
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
@@ -728,7 +875,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 ),
                               ),
                               Text(
-                                '$multiplierStr ${food?.portionUnit ?? 'porsi'} (~${estGram.toInt()}g) • ${log.totalCalories.toInt()} kkal • ${log.totalProtein.toStringAsFixed(1)}g P',
+                                '$multiplierStr ${food?.portionUnit ?? 'porsi'} (~${estGram}g) • ${log.totalCalories.round()} kkal • ${log.totalProtein.toStringAsFixed(1)}g P',
                                 style: const TextStyle(
                                   color: Colors.white70,
                                   fontSize: 12,
@@ -799,6 +946,12 @@ class _LogMealSheetState extends State<LogMealSheet> {
     _loadRecent();
   }
 
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
   void _changeSession(String session) {
     setState(() => _currentSession = session);
     _loadFoods(_searchCtrl.text);
@@ -818,8 +971,8 @@ class _LogMealSheetState extends State<LogMealSheet> {
     if (!mounted) return;
     setState(() {
       _allFoods = list;
-      if (_selectedFood == null && list.isNotEmpty) {
-        _selectedFood = list.first;
+      if (_selectedFood == null || !list.any((f) => f.id == _selectedFood!.id)) {
+        _selectedFood = list.isNotEmpty ? list.first : null;
       }
     });
   }
@@ -829,6 +982,55 @@ class _LogMealSheetState extends State<LogMealSheet> {
       final next = _portion + delta;
       if (next >= 0.25) _portion = double.parse(next.toStringAsFixed(2));
     });
+  }
+
+  Future<void> _openCustomFoodActions(FoodItem item) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: const Text('Menu Makanan Kustom'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('Edit Makanan Kustom'),
+              onTap: () => Navigator.pop(ctx, 'edit'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
+              title: const Text('Hapus Makanan Kustom', style: TextStyle(color: Colors.redAccent)),
+              onTap: () => Navigator.pop(ctx, 'delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (!mounted || action == null) return;
+    if (action == 'edit') {
+      await showDialog(
+        context: context,
+        builder: (_) => AddCustomFoodDialog(existingFood: item),
+      );
+      await _loadFoods(_searchCtrl.text);
+      await _loadRecent();
+      widget.onSaved();
+    } else if (action == 'delete') {
+      await DbService.deleteCustomFood(item.id);
+      if (_selectedFood?.id == item.id) _selectedFood = null;
+      await _loadFoods(_searchCtrl.text);
+      await _loadRecent();
+      widget.onSaved();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${item.name} dihapus dari daftar kustom')),
+        );
+      }
+    }
   }
 
   Future<void> _save() async {
@@ -860,12 +1062,17 @@ class _LogMealSheetState extends State<LogMealSheet> {
     final totalPro = (food?.protein ?? 0) * _portion;
     final totalGram = (food?.estimatedGrams ?? 0) * _portion;
 
+    final bottomInset = math.max(
+      MediaQuery.of(context).viewInsets.bottom,
+      MediaQuery.of(context).viewPadding.bottom,
+    );
+
     return SingleChildScrollView(
       padding: EdgeInsets.only(
         left: 16,
         right: 16,
         top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+        bottom: bottomInset + 20,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -974,6 +1181,7 @@ class _LogMealSheetState extends State<LogMealSheet> {
                       final isSelected = _selectedFood?.id == item.id;
                       return GestureDetector(
                         onTap: () => setState(() => _selectedFood = item),
+                        onLongPress: item.isCustom ? () => _openCustomFoodActions(item) : null,
                         child: Container(
                           width: 155,
                           margin: const EdgeInsets.only(right: 8),
@@ -1033,6 +1241,19 @@ class _LogMealSheetState extends State<LogMealSheet> {
                                     size: 16,
                                     color: Theme.of(context).colorScheme.primary,
                                   ),
+                                )
+                              else if (item.isCustom)
+                                Positioned(
+                                  top: 0,
+                                  right: 0,
+                                  child: GestureDetector(
+                                    onTap: () => _openCustomFoodActions(item),
+                                    child: const Icon(
+                                      Icons.more_horiz,
+                                      size: 16,
+                                      color: Colors.white54,
+                                    ),
+                                  ),
                                 ),
                             ],
                           ),
@@ -1053,11 +1274,14 @@ class _LogMealSheetState extends State<LogMealSheet> {
               child: Column(
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Porsi (${food.portionUnit})',
-                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      Expanded(
+                        child: Text(
+                          'Porsi (${food.portionUnit})',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
                       ),
                       Row(
                         children: [
@@ -1126,9 +1350,9 @@ class _LogMealSheetState extends State<LogMealSheet> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      Text('~${totalGram.toInt()} Gram'),
+                      Text('~${totalGram.round()} Gram'),
                       Text(
-                        '${totalCal.toInt()} kkal',
+                        '${totalCal.round()} kkal',
                         style: const TextStyle(
                           color: Color(0xFFE5A93C),
                           fontWeight: FontWeight.bold,
@@ -1173,7 +1397,8 @@ class _LogMealSheetState extends State<LogMealSheet> {
 }
 
 class AddCustomFoodDialog extends StatefulWidget {
-  const AddCustomFoodDialog({super.key});
+  final FoodItem? existingFood;
+  const AddCustomFoodDialog({super.key, this.existingFood});
 
   @override
   State<AddCustomFoodDialog> createState() => _AddCustomFoodDialogState();
@@ -1181,29 +1406,67 @@ class AddCustomFoodDialog extends StatefulWidget {
 
 class _AddCustomFoodDialogState extends State<AddCustomFoodDialog> {
   final _formKey = GlobalKey<FormState>();
-  final _nameCtrl = TextEditingController();
-  final _unitCtrl = TextEditingController(text: 'porsi');
-  final _gramCtrl = TextEditingController(text: '100');
-  final _calCtrl = TextEditingController();
-  final _proCtrl = TextEditingController();
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _unitCtrl;
+  late final TextEditingController _gramCtrl;
+  late final TextEditingController _calCtrl;
+  late final TextEditingController _proCtrl;
   bool _isSnack = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final f = widget.existingFood;
+    _nameCtrl = TextEditingController(text: f?.name ?? '');
+    _unitCtrl = TextEditingController(text: f?.portionUnit ?? 'porsi');
+    _gramCtrl = TextEditingController(
+      text: f != null ? f.estimatedGrams.toInt().toString() : '100',
+    );
+    _calCtrl = TextEditingController(
+      text: f != null ? f.calories.toInt().toString() : '',
+    );
+    _proCtrl = TextEditingController(
+      text: f != null ? f.protein.toString() : '',
+    );
+    _isSnack = f?.isSnack ?? false;
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _unitCtrl.dispose();
+    _gramCtrl.dispose();
+    _calCtrl.dispose();
+    _proCtrl.dispose();
+    super.dispose();
+  }
+
+  double _parseNum(String text, double fallback) =>
+      double.tryParse(text.replaceAll(',', '.').trim()) ?? fallback;
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
     await DbService.addCustomFood(
+      id: widget.existingFood?.id,
       isSnack: _isSnack,
       name: _nameCtrl.text,
       portionUnit: _unitCtrl.text,
-      estimatedGrams: double.tryParse(_gramCtrl.text) ?? 100,
-      calories: double.tryParse(_calCtrl.text) ?? 0,
-      protein: double.tryParse(_proCtrl.text) ?? 0,
+      estimatedGrams: _parseNum(_gramCtrl.text, 100),
+      calories: _parseNum(_calCtrl.text, 0),
+      protein: _parseNum(_proCtrl.text, 0),
     );
 
     if (mounted) {
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Menu makanan kustom berhasil ditambahkan')),
+        SnackBar(
+          content: Text(
+            widget.existingFood != null
+                ? 'Menu kustom berhasil diperbarui'
+                : 'Menu makanan kustom berhasil ditambahkan',
+          ),
+        ),
       );
     }
   }
@@ -1211,7 +1474,7 @@ class _AddCustomFoodDialogState extends State<AddCustomFoodDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Tambah Makanan Kustom'),
+      title: Text(widget.existingFood != null ? 'Edit Makanan Kustom' : 'Tambah Makanan Kustom'),
       content: SingleChildScrollView(
         child: Form(
           key: _formKey,
@@ -1298,16 +1561,20 @@ class _AddCustomFoodDialogState extends State<AddCustomFoodDialog> {
 class ProfileDialog extends StatefulWidget {
   final String initialName;
   final double initialWeight;
+  final double initialTargetWeight;
   final double initialHeight;
   final int initialAge;
+  final int initialActivityLevel;
   final double initialCalories;
   final double initialProtein;
   final bool isOnboarding;
   final void Function(
     String name,
     double weight,
+    double targetWeight,
     double height,
     int age,
+    int activityLevel,
     double calories,
     double protein,
   ) onSaved;
@@ -1316,8 +1583,10 @@ class ProfileDialog extends StatefulWidget {
     super.key,
     required this.initialName,
     required this.initialWeight,
+    required this.initialTargetWeight,
     required this.initialHeight,
     required this.initialAge,
+    required this.initialActivityLevel,
     required this.initialCalories,
     required this.initialProtein,
     required this.isOnboarding,
@@ -1332,10 +1601,14 @@ class _ProfileDialogState extends State<ProfileDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameCtrl;
   late final TextEditingController _weightCtrl;
+  late final TextEditingController _targetWeightCtrl;
   late final TextEditingController _heightCtrl;
   late final TextEditingController _ageCtrl;
   late final TextEditingController _calCtrl;
   late final TextEditingController _proCtrl;
+  late int _activityLevel;
+
+  static const _activityMultipliers = [1.3, 1.5, 1.725];
 
   @override
   void initState() {
@@ -1344,12 +1617,16 @@ class _ProfileDialogState extends State<ProfileDialog> {
     _weightCtrl = TextEditingController(
       text: widget.initialWeight > 0 ? widget.initialWeight.toStringAsFixed(0) : '60',
     );
+    _targetWeightCtrl = TextEditingController(
+      text: widget.initialTargetWeight > 0 ? widget.initialTargetWeight.toStringAsFixed(0) : '68',
+    );
     _heightCtrl = TextEditingController(
       text: widget.initialHeight > 0 ? widget.initialHeight.toStringAsFixed(0) : '170',
     );
     _ageCtrl = TextEditingController(
       text: widget.initialAge > 0 ? widget.initialAge.toString() : '22',
     );
+    _activityLevel = widget.initialActivityLevel.clamp(0, 2);
     _calCtrl = TextEditingController(
       text: widget.initialCalories.toInt().toString(),
     );
@@ -1358,16 +1635,31 @@ class _ProfileDialogState extends State<ProfileDialog> {
     );
   }
 
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _weightCtrl.dispose();
+    _targetWeightCtrl.dispose();
+    _heightCtrl.dispose();
+    _ageCtrl.dispose();
+    _calCtrl.dispose();
+    _proCtrl.dispose();
+    super.dispose();
+  }
+
+  double _parseNum(String text, double fallback) =>
+      double.tryParse(text.replaceAll(',', '.').trim()) ?? fallback;
+
   void _calculateTargets() {
-    final w = double.tryParse(_weightCtrl.text) ?? 60.0;
-    final h = double.tryParse(_heightCtrl.text) ?? 170.0;
-    final a = int.tryParse(_ageCtrl.text) ?? 22;
+    final w = _parseNum(_weightCtrl.text, 60.0);
+    final h = _parseNum(_heightCtrl.text, 170.0);
+    final a = int.tryParse(_ageCtrl.text.trim()) ?? 22;
 
     if (w <= 0 || h <= 0 || a <= 0) return;
 
-    // Mifflin-St Jeor + bulking surplus (400 kcal) & 2.0g protein / kg
+    // Mifflin-St Jeor + activity multiplier + bulking surplus (400 kcal) & 2.0g protein / kg
     final bmr = (10 * w) + (6.25 * h) - (5 * a) + 5;
-    final tdee = bmr * 1.4;
+    final tdee = bmr * _activityMultipliers[_activityLevel.clamp(0, 2)];
     final bulkingCal = (tdee + 400).round();
     final bulkingPro = (w * 2.0).round();
 
@@ -1378,8 +1670,8 @@ class _ProfileDialogState extends State<ProfileDialog> {
   }
 
   double get _currentBmi {
-    final w = double.tryParse(_weightCtrl.text) ?? 0;
-    final h = double.tryParse(_heightCtrl.text) ?? 0;
+    final w = _parseNum(_weightCtrl.text, 0);
+    final h = _parseNum(_heightCtrl.text, 0);
     if (w <= 0 || h <= 0) return 0;
     final hm = h / 100;
     return w / (hm * hm);
@@ -1405,22 +1697,25 @@ class _ProfileDialogState extends State<ProfileDialog> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     final name = _nameCtrl.text.trim();
-    final weight = double.tryParse(_weightCtrl.text) ?? 60;
-    final height = double.tryParse(_heightCtrl.text) ?? 170;
-    final age = int.tryParse(_ageCtrl.text) ?? 22;
-    final cal = double.tryParse(_calCtrl.text) ?? 2500;
-    final pro = double.tryParse(_proCtrl.text) ?? 140;
+    final weight = _parseNum(_weightCtrl.text, 60);
+    final targetWeight = _parseNum(_targetWeightCtrl.text, weight + 8);
+    final height = _parseNum(_heightCtrl.text, 170);
+    final age = int.tryParse(_ageCtrl.text.trim()) ?? 22;
+    final cal = _parseNum(_calCtrl.text, 2500);
+    final pro = _parseNum(_proCtrl.text, 140);
 
     await DbService.saveProfile(
       name: name,
       weight: weight,
+      targetWeight: targetWeight,
       height: height,
       age: age,
+      activityLevel: _activityLevel,
       targetCalories: cal,
       targetProtein: pro,
     );
 
-    widget.onSaved(name, weight, height, age, cal, pro);
+    widget.onSaved(name, weight, targetWeight, height, age, _activityLevel, cal, pro);
     if (mounted) Navigator.pop(context);
   }
 
@@ -1507,19 +1802,54 @@ class _ProfileDialogState extends State<ProfileDialog> {
                 ],
               ),
               const SizedBox(height: 10),
-              TextFormField(
-                controller: _ageCtrl,
-                keyboardType: TextInputType.number,
-                onChanged: (_) {
-                  setState(() {});
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _targetWeightCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Target Berat',
+                        suffixText: 'kg',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _ageCtrl,
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) {
+                        setState(() {});
+                        _calculateTargets();
+                      },
+                      decoration: const InputDecoration(
+                        labelText: 'Umur',
+                        suffixText: 'tahun',
+                      ),
+                      validator: (val) =>
+                          val == null || val.trim().isEmpty ? 'Wajib' : null,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Tingkat Aktivitas Harian:',
+                style: TextStyle(fontSize: 12, color: Colors.white70),
+              ),
+              const SizedBox(height: 6),
+              SegmentedButton<int>(
+                segments: const [
+                  ButtonSegment(value: 0, label: Text('Ringan', style: TextStyle(fontSize: 11))),
+                  ButtonSegment(value: 1, label: Text('Gym 3-4x', style: TextStyle(fontSize: 11))),
+                  ButtonSegment(value: 2, label: Text('Berat', style: TextStyle(fontSize: 11))),
+                ],
+                selected: {_activityLevel},
+                onSelectionChanged: (v) {
+                  setState(() => _activityLevel = v.first);
                   _calculateTargets();
                 },
-                decoration: const InputDecoration(
-                  labelText: 'Umur',
-                  suffixText: 'tahun',
-                ),
-                validator: (val) =>
-                    val == null || val.trim().isEmpty ? 'Wajib' : null,
               ),
               const SizedBox(height: 14),
               // BMI & Bulking Calculation Card
@@ -1642,13 +1972,17 @@ class _EditPortionSheetState extends State<EditPortionSheet> {
     (3.0, '🏋️ Porsi Kuli', '3.0x', 'Super bulking'),
   ];
 
+  double get _stdGram {
+    final g = widget.log.foodItem.value?.estimatedGrams ?? 100.0;
+    return g > 0 ? g : 100.0;
+  }
+
   @override
   void initState() {
     super.initState();
     _portion = widget.log.portionMultiplier;
-    final stdGram = widget.log.foodItem.value?.estimatedGrams ?? 100.0;
     _gramCtrl = TextEditingController(
-      text: (_portion * stdGram).round().toString(),
+      text: (_portion * _stdGram).round().toString(),
     );
   }
 
@@ -1659,36 +1993,48 @@ class _EditPortionSheetState extends State<EditPortionSheet> {
   }
 
   void _applyMultiplier(double mult) {
+    FocusScope.of(context).unfocus();
     setState(() {
       _portion = mult;
-      final stdGram = widget.log.foodItem.value?.estimatedGrams ?? 100.0;
-      _gramCtrl.text = (_portion * stdGram).round().toString();
+      _gramCtrl.text = (_portion * _stdGram).round().toString();
     });
   }
 
   void _onGramChanged(String val) {
-    final gram = double.tryParse(val.trim());
-    final stdGram = widget.log.foodItem.value?.estimatedGrams ?? 100.0;
-    if (gram != null && gram > 0 && stdGram > 0) {
+    final gram = double.tryParse(val.replaceAll(',', '.').trim());
+    if (gram != null && gram > 0) {
       setState(() {
-        _portion = double.parse((gram / stdGram).toStringAsFixed(2));
+        _portion = gram / _stdGram;
       });
     }
   }
 
   void _stepGram(double deltaGram) {
-    final currentGram = double.tryParse(_gramCtrl.text) ??
-        ((widget.log.foodItem.value?.estimatedGrams ?? 100.0) * _portion);
-    final nextGram = currentGram + deltaGram;
+    FocusScope.of(context).unfocus();
+    final currentGram = double.tryParse(_gramCtrl.text.replaceAll(',', '.').trim()) ??
+        (_stdGram * _portion);
+    final nextGram = (currentGram + deltaGram).round();
     if (nextGram >= 5) {
-      _gramCtrl.text = nextGram.round().toString();
-      _onGramChanged(_gramCtrl.text);
+      _gramCtrl.text = nextGram.toString();
+      setState(() {
+        _portion = nextGram / _stdGram;
+      });
     }
   }
 
   Future<void> _save() async {
+    final typedGram = double.tryParse(_gramCtrl.text.replaceAll(',', '.').trim());
+    if (typedGram == null || typedGram <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Masukkan berat gram porsi yang valid')),
+      );
+      return;
+    }
+    final portionToSave = (typedGram - (_portion * _stdGram).round()).abs() < 1
+        ? _portion
+        : typedGram / _stdGram;
     final foodName = widget.log.foodItem.value?.name ?? 'Makanan';
-    await DbService.updateMealLogPortion(widget.log.id, _portion);
+    await DbService.updateMealLogPortion(widget.log.id, portionToSave);
     widget.onSaved();
     if (mounted) {
       Navigator.pop(context);
@@ -1704,24 +2050,28 @@ class _EditPortionSheetState extends State<EditPortionSheet> {
   @override
   Widget build(BuildContext context) {
     final food = widget.log.foodItem.value;
-    final stdGram = food?.estimatedGrams ?? 100.0;
+    final stdGram = _stdGram;
     final currentGram = (_portion * stdGram).round();
     final cal = ((food?.calories ?? 0.0) * _portion).round();
     final pro = ((food?.protein ?? 0.0) * _portion).toStringAsFixed(1);
     final carbs = ((food?.carbs ?? 0.0) * _portion).toStringAsFixed(1);
     final fat = ((food?.fat ?? 0.0) * _portion).toStringAsFixed(1);
+    final bottomInset = math.max(
+      MediaQuery.of(context).viewInsets.bottom,
+      MediaQuery.of(context).viewPadding.bottom,
+    );
 
-    return Container(
+    return ConstrainedBox(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.85,
       ),
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-      ),
       child: SingleChildScrollView(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 20,
+          bottom: bottomInset + 20,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1769,49 +2119,64 @@ class _EditPortionSheetState extends State<EditPortionSheet> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  Column(
-                    children: [
-                      Text(
-                        '$cal',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.primary,
+                  Expanded(
+                    child: Column(
+                      children: [
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            '$cal',
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
                         ),
-                      ),
-                      const Text('Kalori (kkal)', style: TextStyle(fontSize: 11, color: Colors.white70)),
-                    ],
+                        const Text('Kalori (kkal)', style: TextStyle(fontSize: 11, color: Colors.white70)),
+                      ],
+                    ),
                   ),
                   Container(width: 1, height: 32, color: const Color(0xFF333842)),
-                  Column(
-                    children: [
-                      Text(
-                        '${pro}g',
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF4CAF50),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            '${pro}g',
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF4CAF50),
+                            ),
+                          ),
                         ),
-                      ),
-                      const Text('Protein', style: TextStyle(fontSize: 11, color: Colors.white70)),
-                    ],
+                        const Text('Protein', style: TextStyle(fontSize: 11, color: Colors.white70)),
+                      ],
+                    ),
                   ),
                   Container(width: 1, height: 32, color: const Color(0xFF333842)),
-                  Column(
-                    children: [
-                      Text(
-                        '${currentGram}g',
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                  Expanded(
+                    child: Column(
+                      children: [
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            '${currentGram}g',
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
                         ),
-                      ),
-                      Text(
-                        '~${_portion.toStringAsFixed(1)} porsi',
-                        style: const TextStyle(fontSize: 11, color: Colors.white70),
-                      ),
-                    ],
+                        Text(
+                          '~${_portion.toStringAsFixed(1)} porsi',
+                          style: const TextStyle(fontSize: 11, color: Colors.white70),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -1949,15 +2314,18 @@ class _EditPortionSheetState extends State<EditPortionSheet> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Theme.of(context).colorScheme.primary,
                   foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
                 onPressed: _save,
-                child: Text(
-                  'Simpan Porsi (${currentGram}g • $cal kkal)',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'Simpan Porsi (${currentGram}g • $cal kkal)',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
                 ),
               ),
             ),
@@ -1970,11 +2338,13 @@ class _EditPortionSheetState extends State<EditPortionSheet> {
 
 class WeightLogSheet extends StatefulWidget {
   final double currentWeight;
+  final double targetWeight;
   final ValueChanged<double> onWeightUpdated;
 
   const WeightLogSheet({
     super.key,
     required this.currentWeight,
+    required this.targetWeight,
     required this.onWeightUpdated,
   });
 
@@ -1994,6 +2364,12 @@ class _WeightLogSheetState extends State<WeightLogSheet> {
       _weightCtrl.text = widget.currentWeight.toStringAsFixed(1);
     }
     _loadLogs();
+  }
+
+  @override
+  void dispose() {
+    _weightCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _loadLogs() async {
@@ -2054,6 +2430,9 @@ class _WeightLogSheetState extends State<WeightLogSheet> {
     if (confirm == true) {
       await DbService.deleteWeightLog(log.id);
       await _loadLogs();
+      if (_logs.isNotEmpty) {
+        widget.onWeightUpdated(_logs.first.weight);
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -2067,6 +2446,10 @@ class _WeightLogSheetState extends State<WeightLogSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = math.max(
+      MediaQuery.of(context).viewInsets.bottom,
+      MediaQuery.of(context).viewPadding.bottom,
+    );
     return ConstrainedBox(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.85,
@@ -2076,7 +2459,7 @@ class _WeightLogSheetState extends State<WeightLogSheet> {
           left: 20,
           right: 20,
           top: 20,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+          bottom: bottomInset + 20,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2106,6 +2489,49 @@ class _WeightLogSheetState extends State<WeightLogSheet> {
               'Catat berat badan berkala untuk memantau progres bulking.',
               style: TextStyle(color: Colors.white70, fontSize: 12),
             ),
+            if (widget.targetWeight > 0) ...[
+              const SizedBox(height: 10),
+              Builder(
+                builder: (context) {
+                  final latest = _logs.isNotEmpty ? _logs.first.weight : widget.currentWeight;
+                  final gap = widget.targetWeight - latest;
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF232730),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Target Bulking: ${widget.targetWeight.toStringAsFixed(1)} kg',
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            gap > 0
+                                ? 'Kurang ${gap.toStringAsFixed(1)} kg lagi'
+                                : 'Target berat tercapai! 🎉',
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: gap > 0
+                                  ? Theme.of(context).colorScheme.primary
+                                  : const Color(0xFF4CAF50),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ],
             const SizedBox(height: 16),
             Row(
               children: [
@@ -2495,23 +2921,29 @@ class _DataReminderSheetState extends State<DataReminderSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    final bottomInset = math.max(
+      MediaQuery.of(context).viewInsets.bottom,
+      MediaQuery.of(context).viewPadding.bottom,
+    );
+    return SingleChildScrollView(
       padding: EdgeInsets.only(
         left: 20,
         right: 20,
         top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        bottom: bottomInset + 24,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Pengingat & Backup Data',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              const Expanded(
+                child: Text(
+                  'Pengingat & Backup Data',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
               ),
               IconButton(
                 icon: const Icon(Icons.close),
