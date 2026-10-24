@@ -16,4 +16,5 @@ class FoodItem {
   double carbs = 0.0;
   double fat = 0.0;
   bool isCustom = false;
+  bool isSnack = false; // true: muncul di sesi Camilan
 }

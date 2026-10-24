@@ -8,6 +8,7 @@ FoodItem _food({
   required double protein,
   double carbs = 0,
   double fat = 0,
+  bool isSnack = false,
 }) =>
     FoodItem()
       ..name = name
@@ -16,7 +17,8 @@ FoodItem _food({
       ..calories = calories
       ..protein = protein
       ..carbs = carbs
-      ..fat = fat;
+      ..fat = fat
+      ..isSnack = isSnack;
 
 /// 100 Data Makanan Populer Indonesia berdasarkan standar DKPI (Daftar Komposisi Pangan Indonesia) Kemenkes RI
 List<FoodItem> dkpiFoods() => [
@@ -90,28 +92,28 @@ List<FoodItem> dkpiFoods() => [
   _food(name: 'Putih Telur Rebus', portionUnit: 'butir', estimatedGrams: 35, calories: 17, protein: 3.8, carbs: 0.2, fat: 0.1),
   _food(name: 'Telur Asin Rebus', portionUnit: 'butir', estimatedGrams: 60, calories: 105, protein: 8.0, carbs: 1.0, fat: 7.5),
   _food(name: 'Telur Puyuh Rebus', portionUnit: 'butir', estimatedGrams: 10, calories: 16, protein: 1.3, carbs: 0.1, fat: 1.1),
-  _food(name: 'Susu Sapi Murni / UHT Full Cream', portionUnit: 'gelas (200ml)', estimatedGrams: 200, calories: 130, protein: 6.5, carbs: 10.0, fat: 7.0),
-  _food(name: 'Susu UHT Low Fat', portionUnit: 'gelas (200ml)', estimatedGrams: 200, calories: 95, protein: 6.8, carbs: 11.0, fat: 2.5),
-  _food(name: 'Susu Kedelai Murni', portionUnit: 'gelas (200ml)', estimatedGrams: 200, calories: 90, protein: 6.0, carbs: 8.0, fat: 4.0),
-  _food(name: 'Keju Cheddar Olahan', portionUnit: 'lembar / slice', estimatedGrams: 20, calories: 65, protein: 4.0, carbs: 1.0, fat: 5.0),
-  _food(name: 'Yoghurt Plain', portionUnit: 'cup kecil', estimatedGrams: 100, calories: 65, protein: 4.5, carbs: 6.0, fat: 3.0),
-  _food(name: 'Susu Whey Protein', portionUnit: 'scoop', estimatedGrams: 30, calories: 120, protein: 24.0, carbs: 2.0, fat: 1.5),
+  _food(name: 'Susu Sapi Murni / UHT Full Cream', portionUnit: 'gelas (200ml)', estimatedGrams: 200, calories: 130, protein: 6.5, carbs: 10.0, fat: 7.0, isSnack: true),
+  _food(name: 'Susu UHT Low Fat', portionUnit: 'gelas (200ml)', estimatedGrams: 200, calories: 95, protein: 6.8, carbs: 11.0, fat: 2.5, isSnack: true),
+  _food(name: 'Susu Kedelai Murni', portionUnit: 'gelas (200ml)', estimatedGrams: 200, calories: 90, protein: 6.0, carbs: 8.0, fat: 4.0, isSnack: true),
+  _food(name: 'Keju Cheddar Olahan', portionUnit: 'lembar / slice', estimatedGrams: 20, calories: 65, protein: 4.0, carbs: 1.0, fat: 5.0, isSnack: true),
+  _food(name: 'Yoghurt Plain', portionUnit: 'cup kecil', estimatedGrams: 100, calories: 65, protein: 4.5, carbs: 6.0, fat: 3.0, isSnack: true),
+  _food(name: 'Susu Whey Protein', portionUnit: 'scoop', estimatedGrams: 30, calories: 120, protein: 24.0, carbs: 2.0, fat: 1.5, isSnack: true),
 
   // --- TAHU, TEMPE & KACANG-KACANGAN ---
   _food(name: 'Tempe Goreng Tepung', portionUnit: 'potong sedang', estimatedGrams: 50, calories: 120, protein: 7.0, carbs: 7.0, fat: 7.5),
   _food(name: 'Tempe Goreng Gurih', portionUnit: 'potong sedang', estimatedGrams: 40, calories: 95, protein: 7.5, carbs: 3.5, fat: 5.5),
   _food(name: 'Tempe Bacem', portionUnit: 'potong sedang', estimatedGrams: 50, calories: 110, protein: 7.5, carbs: 11.0, fat: 4.0),
-  _food(name: 'Tempe Mendoan', portionUnit: 'lembar', estimatedGrams: 50, calories: 135, protein: 6.5, carbs: 9.0, fat: 8.5),
+  _food(name: 'Tempe Mendoan', portionUnit: 'lembar', estimatedGrams: 50, calories: 135, protein: 6.5, carbs: 9.0, fat: 8.5, isSnack: true),
   _food(name: 'Tempe Kukus / Rebus', portionUnit: 'potong sedang', estimatedGrams: 40, calories: 75, protein: 7.8, carbs: 3.0, fat: 3.2),
   _food(name: 'Tahu Goreng', portionUnit: 'potong segitiga/kotak', estimatedGrams: 50, calories: 65, protein: 4.5, carbs: 1.5, fat: 4.5),
   _food(name: 'Tahu Putih Kukus/Rebus', portionUnit: 'potong', estimatedGrams: 75, calories: 45, protein: 5.5, carbs: 1.0, fat: 2.0),
   _food(name: 'Tahu Bacem', portionUnit: 'potong', estimatedGrams: 60, calories: 85, protein: 5.0, carbs: 9.0, fat: 3.0),
-  _food(name: 'Tahu Isi Sayur Goreng', portionUnit: 'buah', estimatedGrams: 60, calories: 130, protein: 4.5, carbs: 12.0, fat: 7.5),
+  _food(name: 'Tahu Isi Sayur Goreng', portionUnit: 'buah', estimatedGrams: 60, calories: 130, protein: 4.5, carbs: 12.0, fat: 7.5, isSnack: true),
   _food(name: 'Oncom Goreng', portionUnit: 'potong', estimatedGrams: 40, calories: 75, protein: 4.5, carbs: 4.0, fat: 4.5),
-  _food(name: 'Edamame Rebus', portionUnit: 'mangkuk kecil (kulit)', estimatedGrams: 100, calories: 120, protein: 11.0, carbs: 9.0, fat: 5.0),
-  _food(name: 'Kacang Tanah Sangrai/Goreng', portionUnit: '2 sendok makan', estimatedGrams: 30, calories: 175, protein: 7.5, carbs: 5.0, fat: 14.5),
-  _food(name: 'Kacang Hijau Rebus (gula sedikit)', portionUnit: 'mangkuk', estimatedGrams: 150, calories: 160, protein: 8.0, carbs: 30.0, fat: 1.0),
-  _food(name: 'Selai Kacang (Peanut Butter)', portionUnit: 'sendok makan', estimatedGrams: 16, calories: 95, protein: 4.0, carbs: 3.0, fat: 8.0),
+  _food(name: 'Edamame Rebus', portionUnit: 'mangkuk kecil (kulit)', estimatedGrams: 100, calories: 120, protein: 11.0, carbs: 9.0, fat: 5.0, isSnack: true),
+  _food(name: 'Kacang Tanah Sangrai/Goreng', portionUnit: '2 sendok makan', estimatedGrams: 30, calories: 175, protein: 7.5, carbs: 5.0, fat: 14.5, isSnack: true),
+  _food(name: 'Kacang Hijau Rebus (gula sedikit)', portionUnit: 'mangkuk', estimatedGrams: 150, calories: 160, protein: 8.0, carbs: 30.0, fat: 1.0, isSnack: true),
+  _food(name: 'Selai Kacang (Peanut Butter)', portionUnit: 'sendok makan', estimatedGrams: 16, calories: 95, protein: 4.0, carbs: 3.0, fat: 8.0, isSnack: true),
 
   // --- SAYUR & MASAKAN RUMAHAN ---
   _food(name: 'Sayur Sop Ayam', portionUnit: 'mangkuk', estimatedGrams: 200, calories: 110, protein: 8.0, carbs: 10.0, fat: 4.0),
@@ -131,15 +133,15 @@ List<FoodItem> dkpiFoods() => [
   _food(name: 'Soto Betawi (Daging Sapi & Santan)', portionUnit: 'mangkuk', estimatedGrams: 250, calories: 380, protein: 21.0, carbs: 8.0, fat: 29.0),
   _food(name: 'Rawon Daging Sapi', portionUnit: 'mangkuk', estimatedGrams: 250, calories: 290, protein: 22.0, carbs: 6.0, fat: 20.0),
   _food(name: 'Sate Ayam Bumbu Kacang', portionUnit: '5 tusuk', estimatedGrams: 100, calories: 230, protein: 21.0, carbs: 10.0, fat: 12.0),
-  _food(name: 'Martabak Telur Sapi', portionUnit: '2 potong', estimatedGrams: 100, calories: 270, protein: 11.0, carbs: 16.0, fat: 18.0),
+  _food(name: 'Martabak Telur Sapi', portionUnit: '2 potong', estimatedGrams: 100, calories: 270, protein: 11.0, carbs: 16.0, fat: 18.0, isSnack: true),
 
   // --- BUAH-BUAHAN & CEMILAN SEHAT ---
-  _food(name: 'Pisang Ambon', portionUnit: 'buah sedang', estimatedGrams: 100, calories: 95, protein: 1.2, carbs: 24.0, fat: 0.3),
-  _food(name: 'Pisang Cavendish', portionUnit: 'buah sedang', estimatedGrams: 110, calories: 105, protein: 1.3, carbs: 26.0, fat: 0.3),
-  _food(name: 'Alpukat', portionUnit: 'buah sedang', estimatedGrams: 150, calories: 240, protein: 3.0, carbs: 12.0, fat: 22.0),
-  _food(name: 'Apel Fuji', portionUnit: 'buah sedang', estimatedGrams: 150, calories: 80, protein: 0.4, carbs: 21.0, fat: 0.2),
-  _food(name: 'Pepaya', portionUnit: 'potong sedang', estimatedGrams: 150, calories: 60, protein: 0.9, carbs: 15.0, fat: 0.2),
-  _food(name: 'Mangga Harum Manis', portionUnit: 'buah sedang', estimatedGrams: 150, calories: 100, protein: 1.0, carbs: 25.0, fat: 0.5),
-  _food(name: 'Semangka', portionUnit: 'potong besar', estimatedGrams: 200, calories: 60, protein: 1.2, carbs: 15.0, fat: 0.3),
-  _food(name: 'Kurma Sukari', portionUnit: '3 butir', estimatedGrams: 30, calories: 85, protein: 0.8, carbs: 22.0, fat: 0.1),
+  _food(name: 'Pisang Ambon', portionUnit: 'buah sedang', estimatedGrams: 100, calories: 95, protein: 1.2, carbs: 24.0, fat: 0.3, isSnack: true),
+  _food(name: 'Pisang Cavendish', portionUnit: 'buah sedang', estimatedGrams: 110, calories: 105, protein: 1.3, carbs: 26.0, fat: 0.3, isSnack: true),
+  _food(name: 'Alpukat', portionUnit: 'buah sedang', estimatedGrams: 150, calories: 240, protein: 3.0, carbs: 12.0, fat: 22.0, isSnack: true),
+  _food(name: 'Apel Fuji', portionUnit: 'buah sedang', estimatedGrams: 150, calories: 80, protein: 0.4, carbs: 21.0, fat: 0.2, isSnack: true),
+  _food(name: 'Pepaya', portionUnit: 'potong sedang', estimatedGrams: 150, calories: 60, protein: 0.9, carbs: 15.0, fat: 0.2, isSnack: true),
+  _food(name: 'Mangga Harum Manis', portionUnit: 'buah sedang', estimatedGrams: 150, calories: 100, protein: 1.0, carbs: 25.0, fat: 0.5, isSnack: true),
+  _food(name: 'Semangka', portionUnit: 'potong besar', estimatedGrams: 200, calories: 60, protein: 1.2, carbs: 15.0, fat: 0.3, isSnack: true),
+  _food(name: 'Kurma Sukari', portionUnit: '3 butir', estimatedGrams: 30, calories: 85, protein: 0.8, carbs: 22.0, fat: 0.1, isSnack: true),
 ];

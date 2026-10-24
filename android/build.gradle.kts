@@ -17,29 +17,24 @@ rootProject.layout.buildDirectory.value(newBuildDir)
 subprojects {
     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubprojectBuildDir)
+    project.evaluationDependsOn(":app")
 }
 
 subprojects {
     plugins.withId("com.android.library") {
         configure<LibraryExtension> {
-            val pkg = (project.group as? String)?.takeIf { it.isNotEmpty() }
-                ?: "dev.isar.${project.name.replace('-', '_')}"
-            namespace = pkg
+            if (namespace == null) {
+                val pkg = (project.group as? String)?.takeIf { it.isNotEmpty() }
+                    ?: "dev.isar.${project.name.replace('-', '_')}"
+                namespace = pkg
+            }
         }
     }
-
-    val configureAndroid = {
-        val android = project.extensions.findByName("android")
-        if (android is BaseExtension) {
-            android.compileSdkVersion(35)
-        }
-    }
-
-    if (project.state.executed) {
-        configureAndroid()
-    } else {
+    if (project.name == "isar_flutter_libs") {
         project.afterEvaluate {
-            configureAndroid()
+            configure<LibraryExtension> {
+                compileSdk = 36
+            }
         }
     }
 }

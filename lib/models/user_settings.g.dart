@@ -47,18 +47,23 @@ const UserSettingsSchema = CollectionSchema(
       name: r'name',
       type: IsarType.string,
     ),
-    r'targetCalories': PropertySchema(
+    r'remindersEnabled': PropertySchema(
       id: 6,
+      name: r'remindersEnabled',
+      type: IsarType.bool,
+    ),
+    r'targetCalories': PropertySchema(
+      id: 7,
       name: r'targetCalories',
       type: IsarType.double,
     ),
     r'targetProtein': PropertySchema(
-      id: 7,
+      id: 8,
       name: r'targetProtein',
       type: IsarType.double,
     ),
     r'weight': PropertySchema(
-      id: 8,
+      id: 9,
       name: r'weight',
       type: IsarType.double,
     )
@@ -100,9 +105,10 @@ void _userSettingsSerialize(
   writer.writeDouble(offsets[3], object.height);
   writer.writeBool(offsets[4], object.isProfileCompleted);
   writer.writeString(offsets[5], object.name);
-  writer.writeDouble(offsets[6], object.targetCalories);
-  writer.writeDouble(offsets[7], object.targetProtein);
-  writer.writeDouble(offsets[8], object.weight);
+  writer.writeBool(offsets[6], object.remindersEnabled);
+  writer.writeDouble(offsets[7], object.targetCalories);
+  writer.writeDouble(offsets[8], object.targetProtein);
+  writer.writeDouble(offsets[9], object.weight);
 }
 
 UserSettings _userSettingsDeserialize(
@@ -117,9 +123,10 @@ UserSettings _userSettingsDeserialize(
   object.id = id;
   object.isProfileCompleted = reader.readBool(offsets[4]);
   object.name = reader.readString(offsets[5]);
-  object.targetCalories = reader.readDouble(offsets[6]);
-  object.targetProtein = reader.readDouble(offsets[7]);
-  object.weight = reader.readDouble(offsets[8]);
+  object.remindersEnabled = reader.readBool(offsets[6]);
+  object.targetCalories = reader.readDouble(offsets[7]);
+  object.targetProtein = reader.readDouble(offsets[8]);
+  object.weight = reader.readDouble(offsets[9]);
   return object;
 }
 
@@ -143,10 +150,12 @@ P _userSettingsDeserializeProp<P>(
     case 5:
       return (reader.readString(offset)) as P;
     case 6:
-      return (reader.readDouble(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 7:
       return (reader.readDouble(offset)) as P;
     case 8:
+      return (reader.readDouble(offset)) as P;
+    case 9:
       return (reader.readDouble(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -762,6 +771,16 @@ extension UserSettingsQueryFilter
   }
 
   QueryBuilder<UserSettings, UserSettings, QAfterFilterCondition>
+      remindersEnabledEqualTo(bool value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'remindersEnabled',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<UserSettings, UserSettings, QAfterFilterCondition>
       targetCaloriesEqualTo(
     double value, {
     double epsilon = Query.epsilon,
@@ -1042,6 +1061,20 @@ extension UserSettingsQuerySortBy
   }
 
   QueryBuilder<UserSettings, UserSettings, QAfterSortBy>
+      sortByRemindersEnabled() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'remindersEnabled', Sort.asc);
+    });
+  }
+
+  QueryBuilder<UserSettings, UserSettings, QAfterSortBy>
+      sortByRemindersEnabledDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'remindersEnabled', Sort.desc);
+    });
+  }
+
+  QueryBuilder<UserSettings, UserSettings, QAfterSortBy>
       sortByTargetCalories() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'targetCalories', Sort.asc);
@@ -1171,6 +1204,20 @@ extension UserSettingsQuerySortThenBy
   }
 
   QueryBuilder<UserSettings, UserSettings, QAfterSortBy>
+      thenByRemindersEnabled() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'remindersEnabled', Sort.asc);
+    });
+  }
+
+  QueryBuilder<UserSettings, UserSettings, QAfterSortBy>
+      thenByRemindersEnabledDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'remindersEnabled', Sort.desc);
+    });
+  }
+
+  QueryBuilder<UserSettings, UserSettings, QAfterSortBy>
       thenByTargetCalories() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'targetCalories', Sort.asc);
@@ -1252,6 +1299,13 @@ extension UserSettingsQueryWhereDistinct
   }
 
   QueryBuilder<UserSettings, UserSettings, QDistinct>
+      distinctByRemindersEnabled() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'remindersEnabled');
+    });
+  }
+
+  QueryBuilder<UserSettings, UserSettings, QDistinct>
       distinctByTargetCalories() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'targetCalories');
@@ -1314,6 +1368,13 @@ extension UserSettingsQueryProperty
   QueryBuilder<UserSettings, String, QQueryOperations> nameProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'name');
+    });
+  }
+
+  QueryBuilder<UserSettings, bool, QQueryOperations>
+      remindersEnabledProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'remindersEnabled');
     });
   }
 

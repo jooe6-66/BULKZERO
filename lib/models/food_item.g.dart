@@ -42,18 +42,23 @@ const FoodItemSchema = CollectionSchema(
       name: r'isCustom',
       type: IsarType.bool,
     ),
-    r'name': PropertySchema(
+    r'isSnack': PropertySchema(
       id: 5,
+      name: r'isSnack',
+      type: IsarType.bool,
+    ),
+    r'name': PropertySchema(
+      id: 6,
       name: r'name',
       type: IsarType.string,
     ),
     r'portionUnit': PropertySchema(
-      id: 6,
+      id: 7,
       name: r'portionUnit',
       type: IsarType.string,
     ),
     r'protein': PropertySchema(
-      id: 7,
+      id: 8,
       name: r'protein',
       type: IsarType.double,
     )
@@ -108,9 +113,10 @@ void _foodItemSerialize(
   writer.writeDouble(offsets[2], object.estimatedGrams);
   writer.writeDouble(offsets[3], object.fat);
   writer.writeBool(offsets[4], object.isCustom);
-  writer.writeString(offsets[5], object.name);
-  writer.writeString(offsets[6], object.portionUnit);
-  writer.writeDouble(offsets[7], object.protein);
+  writer.writeBool(offsets[5], object.isSnack);
+  writer.writeString(offsets[6], object.name);
+  writer.writeString(offsets[7], object.portionUnit);
+  writer.writeDouble(offsets[8], object.protein);
 }
 
 FoodItem _foodItemDeserialize(
@@ -126,9 +132,10 @@ FoodItem _foodItemDeserialize(
   object.fat = reader.readDouble(offsets[3]);
   object.id = id;
   object.isCustom = reader.readBool(offsets[4]);
-  object.name = reader.readString(offsets[5]);
-  object.portionUnit = reader.readString(offsets[6]);
-  object.protein = reader.readDouble(offsets[7]);
+  object.isSnack = reader.readBool(offsets[5]);
+  object.name = reader.readString(offsets[6]);
+  object.portionUnit = reader.readString(offsets[7]);
+  object.protein = reader.readDouble(offsets[8]);
   return object;
 }
 
@@ -150,10 +157,12 @@ P _foodItemDeserializeProp<P>(
     case 4:
       return (reader.readBool(offset)) as P;
     case 5:
-      return (reader.readString(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 6:
       return (reader.readString(offset)) as P;
     case 7:
+      return (reader.readString(offset)) as P;
+    case 8:
       return (reader.readDouble(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -704,6 +713,16 @@ extension FoodItemQueryFilter
     });
   }
 
+  QueryBuilder<FoodItem, FoodItem, QAfterFilterCondition> isSnackEqualTo(
+      bool value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'isSnack',
+        value: value,
+      ));
+    });
+  }
+
   QueryBuilder<FoodItem, FoodItem, QAfterFilterCondition> nameEqualTo(
     String value, {
     bool caseSensitive = true,
@@ -1096,6 +1115,18 @@ extension FoodItemQuerySortBy on QueryBuilder<FoodItem, FoodItem, QSortBy> {
     });
   }
 
+  QueryBuilder<FoodItem, FoodItem, QAfterSortBy> sortByIsSnack() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isSnack', Sort.asc);
+    });
+  }
+
+  QueryBuilder<FoodItem, FoodItem, QAfterSortBy> sortByIsSnackDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isSnack', Sort.desc);
+    });
+  }
+
   QueryBuilder<FoodItem, FoodItem, QAfterSortBy> sortByName() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'name', Sort.asc);
@@ -1207,6 +1238,18 @@ extension FoodItemQuerySortThenBy
     });
   }
 
+  QueryBuilder<FoodItem, FoodItem, QAfterSortBy> thenByIsSnack() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isSnack', Sort.asc);
+    });
+  }
+
+  QueryBuilder<FoodItem, FoodItem, QAfterSortBy> thenByIsSnackDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isSnack', Sort.desc);
+    });
+  }
+
   QueryBuilder<FoodItem, FoodItem, QAfterSortBy> thenByName() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'name', Sort.asc);
@@ -1276,6 +1319,12 @@ extension FoodItemQueryWhereDistinct
     });
   }
 
+  QueryBuilder<FoodItem, FoodItem, QDistinct> distinctByIsSnack() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'isSnack');
+    });
+  }
+
   QueryBuilder<FoodItem, FoodItem, QDistinct> distinctByName(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
@@ -1332,6 +1381,12 @@ extension FoodItemQueryProperty
   QueryBuilder<FoodItem, bool, QQueryOperations> isCustomProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'isCustom');
+    });
+  }
+
+  QueryBuilder<FoodItem, bool, QQueryOperations> isSnackProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'isSnack');
     });
   }
 

@@ -6,6 +6,7 @@ import '../models/meal_log.dart';
 import '../models/user_settings.dart';
 import '../models/weight_log.dart';
 import '../data/dkpi_foods.dart';
+import 'backup.dart';
 
 class DbService {
   static late final Isar isar;
@@ -39,6 +40,7 @@ class DbService {
     required double targetCalories,
     required double targetProtein,
   }) async {
+    final current = await getSettings();
     final settings = UserSettings()
       ..name = name.trim()
       ..weight = weight
@@ -46,36 +48,111 @@ class DbService {
       ..age = age
       ..targetCalories = targetCalories
       ..targetProtein = targetProtein
-      ..isProfileCompleted = true;
+      ..isProfileCompleted = true
+      ..remindersEnabled = current.remindersEnabled;
     await isar.writeTxn(() async {
       await isar.userSettings.put(settings);
     });
   }
 
+  static Future<void> setRemindersEnabled(bool enabled) async {
+    final current = await getSettings();
+    current.remindersEnabled = enabled;
+    await isar.writeTxn(() async {
+      await isar.userSettings.put(current);
+    });
+  }
+
+  static Future<String> exportBackupJson() async {
+    final settings = await getSettings();
+    final foods = await isar.foodItems.where().findAll();
+    final mealLogs = await isar.mealLogs.where().findAll();
+    for (final l in mealLogs) {
+      await l.foodItem.load();
+    }
+    final weightLogs = await isar.weightLogs.where().findAll();
+    return encodeBackup(
+      settings: settings,
+      foods: foods,
+      mealLogs: mealLogs,
+      weightLogs: weightLogs,
+    );
+  }
+
+  static Future<void> importBackupJson(String jsonSource) async {
+    final data = decodeBackup(jsonSource);
+    await isar.writeTxn(() async {
+      await isar.mealLogs.clear();
+      await isar.weightLogs.clear();
+      await isar.foodItems.clear();
+      await isar.userSettings.put(data.settings);
+      await isar.foodItems.putAll(data.foods);
+      final foodById = {for (final f in data.foods) f.id: f};
+      for (final item in data.mealLogs) {
+        item.log.foodItem.value = foodById[item.foodId];
+        await isar.mealLogs.put(item.log);
+        await item.log.foodItem.save();
+      }
+      await isar.weightLogs.putAll(data.weightLogs);
+    });
+    await _seedInitialFoods();
+  }
+
   static Future<void> _seedInitialFoods() async {
-    final existingFoods = await isar.foodItems.where().findAll();
-    final existingNames = existingFoods.map((e) => e.name.toLowerCase().trim()).toSet();
+    final existing = {
+      for (final f in await isar.foodItems.filter().isCustomEqualTo(false).findAll())
+        f.name.toLowerCase().trim(): f,
+    };
 
-    final itemsToSeed = dkpiFoods()
-        .where((f) => !existingNames.contains(f.name.toLowerCase().trim()))
-        .toList();
+    // New DKPI items, plus existing ones whose category changed in a later version.
+    final toPut = <FoodItem>[];
+    for (final seed in dkpiFoods()) {
+      final current = existing[seed.name.toLowerCase().trim()];
+      if (current == null) {
+        toPut.add(seed);
+      } else if (current.isSnack != seed.isSnack) {
+        toPut.add(current..isSnack = seed.isSnack);
+      }
+    }
 
-    if (itemsToSeed.isNotEmpty) {
+    if (toPut.isNotEmpty) {
       await isar.writeTxn(() async {
-        await isar.foodItems.putAll(itemsToSeed);
+        await isar.foodItems.putAll(toPut);
       });
-      debugPrint('Seeded ${itemsToSeed.length} DKPI food items into local database.');
+      debugPrint('Seeded/updated ${toPut.length} DKPI food items.');
     }
   }
 
-  static Future<List<FoodItem>> searchFoods(String query) async {
-    if (query.trim().isEmpty) {
-      return isar.foodItems.where().findAll();
+  /// Empty query + [isSnack] set: only that category. Typed query: search all foods.
+  static Future<List<FoodItem>> searchFoods(String query, {bool? isSnack}) async {
+    final q = query.trim();
+    if (q.isNotEmpty) {
+      return isar.foodItems.filter().nameContains(q, caseSensitive: false).findAll();
     }
-    return isar.foodItems
+    if (isSnack == null) return isar.foodItems.where().findAll();
+    // Rows saved before `isSnack` existed store null, so "not snack" must be `not(== true)`.
+    return isSnack
+        ? isar.foodItems.filter().isSnackEqualTo(true).findAll()
+        : isar.foodItems.filter().not().isSnackEqualTo(true).findAll();
+  }
+
+  /// Distinct foods most recently logged in [session], newest first.
+  static Future<List<FoodItem>> getRecentFoods(String session, {int limit = 5}) async {
+    final logs = await isar.mealLogs
         .filter()
-        .nameContains(query.trim(), caseSensitive: false)
+        .mealSessionEqualTo(session)
+        .sortByDateDesc()
+        .limit(30)
         .findAll();
+    final seen = <int>{};
+    final foods = <FoodItem>[];
+    for (final log in logs) {
+      await log.foodItem.load();
+      final food = log.foodItem.value;
+      if (food != null && seen.add(food.id)) foods.add(food);
+      if (foods.length == limit) break;
+    }
+    return foods;
   }
 
   static Future<List<MealLog>> getLogsForDay(DateTime date) async {
@@ -125,6 +202,7 @@ class DbService {
     required double protein,
     double carbs = 0.0,
     double fat = 0.0,
+    bool isSnack = false,
   }) async {
     final food = FoodItem()
       ..name = name.trim()
@@ -134,6 +212,7 @@ class DbService {
       ..protein = protein
       ..carbs = carbs
       ..fat = fat
+      ..isSnack = isSnack
       ..isCustom = true;
 
     await isar.writeTxn(() async {

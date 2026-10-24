@@ -12,6 +12,7 @@ class UserSettings {
   double targetCalories = 2500;
   double targetProtein = 140;
   bool isProfileCompleted = false;
+  bool remindersEnabled = false;
 
   double get bmi {
     if (height <= 0) return 0;
