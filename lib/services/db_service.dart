@@ -31,15 +31,6 @@ class DbService {
     return defaultSettings;
   }
 
-  static Future<void> saveSettings(double calories, double protein) async {
-    final current = await getSettings();
-    current.targetCalories = calories;
-    current.targetProtein = protein;
-    await isar.writeTxn(() async {
-      await isar.userSettings.put(current);
-    });
-  }
-
   static Future<void> saveProfile({
     required String name,
     required double weight,
@@ -65,17 +56,8 @@ class DbService {
     final existingFoods = await isar.foodItems.where().findAll();
     final existingNames = existingFoods.map((e) => e.name.toLowerCase().trim()).toSet();
 
-    final itemsToSeed = dkpiFoodDatabase
-        .where((df) => !existingNames.contains(df.name.toLowerCase().trim()))
-        .map((df) => FoodItem()
-          ..name = df.name
-          ..portionUnit = df.portionUnit
-          ..estimatedGrams = df.estimatedGrams
-          ..calories = df.calories
-          ..protein = df.protein
-          ..carbs = df.carbs
-          ..fat = df.fat
-          ..isCustom = false)
+    final itemsToSeed = dkpiFoods()
+        .where((f) => !existingNames.contains(f.name.toLowerCase().trim()))
         .toList();
 
     if (itemsToSeed.isNotEmpty) {
@@ -98,11 +80,11 @@ class DbService {
 
   static Future<List<MealLog>> getLogsForDay(DateTime date) async {
     final startOfDay = DateTime(date.year, date.month, date.day);
-    final endOfDay = DateTime(date.year, date.month, date.day, 23, 59, 59, 999);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
 
     final logs = await isar.mealLogs
         .filter()
-        .dateBetween(startOfDay, endOfDay)
+        .dateBetween(startOfDay, endOfDay, includeUpper: false)
         .findAll();
 
     for (final log in logs) {

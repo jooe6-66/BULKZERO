@@ -38,6 +38,13 @@ class BulkingTrackerApp extends StatelessWidget {
             side: const BorderSide(color: Color(0xFF2C313C), width: 1),
           ),
         ),
+        dialogTheme: const DialogThemeData(backgroundColor: Color(0xFF1F232B)),
+        bottomSheetTheme: const BottomSheetThemeData(
+          backgroundColor: Color(0xFF1F232B),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+        ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: const Color(0xFF262A32),
@@ -179,9 +186,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: const Color(0xFF1A1D23),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (ctx) => LogMealSheet(
         initialSession: defaultSession ?? _sessions.first,
         sessions: _sessions,
@@ -198,67 +202,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  void _openEditTargetDialog() {
-    final calCtrl = TextEditingController(text: _targetCalories.toInt().toString());
-    final proCtrl = TextEditingController(text: _targetProtein.toInt().toString());
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F232B),
-        title: const Text('Target Harian Bulking'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: calCtrl,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Target Kalori (kkal)',
-                suffixText: 'kkal',
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: proCtrl,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Target Protein (g)',
-                suffixText: 'gram',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Batal'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final cal = double.tryParse(calCtrl.text) ?? _targetCalories;
-              final pro = double.tryParse(proCtrl.text) ?? _targetProtein;
-              await DbService.saveSettings(cal, pro);
-              if (mounted) {
-                setState(() {
-                  _targetCalories = cal;
-                  _targetProtein = pro;
-                });
-              }
-              if (ctx.mounted) {
-                Navigator.pop(ctx);
-              }
-            },
-            child: const Text('Simpan'),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _deleteLog(MealLog log) async {
+    final food = log.foodItem.value;
+    final foodName = food?.name ?? 'Makanan';
+    final session = log.mealSession;
+    final portion = log.portionMultiplier;
+    final date = log.date;
+
     await DbService.deleteMealLog(log.id);
     _loadLogs();
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$foodName dihapus dari $session'),
+        action: SnackBarAction(
+          label: 'BATAL',
+          textColor: Theme.of(context).colorScheme.primary,
+          onPressed: () async {
+            if (food != null) {
+              await DbService.addMealLog(
+                food: food,
+                mealSession: session,
+                portionMultiplier: portion,
+                date: date,
+              );
+              _loadLogs();
+            }
+          },
+        ),
+        duration: const Duration(seconds: 4),
+      ),
+    );
   }
 
   Future<void> _copyYesterdaySession(String session) async {
@@ -280,10 +256,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1F232B),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (ctx) => EditPortionSheet(
         log: log,
         onSaved: _loadLogs,
@@ -295,10 +267,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1F232B),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (ctx) => WeightLogSheet(
         currentWeight: _userWeight,
         onWeightUpdated: (newWeight) {
@@ -338,11 +306,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             icon: const Icon(Icons.person_outline),
             tooltip: 'Profil & BMI',
             onPressed: () => _openProfileDialog(isOnboarding: false),
-          ),
-          IconButton(
-            icon: const Icon(Icons.tune),
-            tooltip: 'Ubah Target Cepat',
-            onPressed: _openEditTargetDialog,
           ),
           IconButton(
             icon: const Icon(Icons.add_circle_outline),
@@ -540,19 +503,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 '/ $target',
                 style: const TextStyle(
                   fontSize: 11,
-                  color: Colors.white54,
+                  color: Colors.white70,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 8),
           ClipRRect(
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(6),
             child: LinearProgressIndicator(
               value: progress,
               backgroundColor: const Color(0xFF333842),
               valueColor: AlwaysStoppedAnimation<Color>(progressColor),
-              minHeight: 6,
+              minHeight: 10,
             ),
           ),
         ],
@@ -654,7 +617,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               Text(
                                 '$multiplierStr ${food?.portionUnit ?? 'porsi'} (~${estGram.toInt()}g) • ${log.totalCalories.toInt()} kkal • ${log.totalProtein.toStringAsFixed(1)}g P',
                                 style: const TextStyle(
-                                  color: Colors.white54,
+                                  color: Colors.white70,
                                   fontSize: 12,
                                 ),
                               ),
@@ -663,7 +626,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                         IconButton(
                           icon: const Icon(Icons.edit_outlined, size: 18),
-                          color: Colors.white54,
+                          color: Colors.white70,
                           tooltip: 'Ubah Porsi',
                           onPressed: () => _openEditPortionDialog(log),
                         ),
@@ -737,6 +700,8 @@ class _LogMealSheetState extends State<LogMealSheet> {
 
   Future<void> _save() async {
     if (_selectedFood == null) return;
+    final foodName = _selectedFood!.name;
+    final session = _currentSession;
     await DbService.addMealLog(
       food: _selectedFood!,
       mealSession: _currentSession,
@@ -744,7 +709,15 @@ class _LogMealSheetState extends State<LogMealSheet> {
       date: widget.selectedDate,
     );
     widget.onSaved();
-    if (mounted) Navigator.pop(context);
+    if (mounted) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$foodName berhasil dicatat ke $session'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   @override
@@ -828,41 +801,60 @@ class _LogMealSheetState extends State<LogMealSheet> {
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
                             color: isSelected
-                                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)
+                                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.22)
                                 : const Color(0xFF232730),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
                               color: isSelected
                                   ? Theme.of(context).colorScheme.primary
-                                  : Colors.transparent,
-                              width: 1.5,
+                                  : const Color(0xFF2E333D),
+                              width: isSelected ? 2 : 1,
                             ),
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
+                          child: Stack(
                             children: [
-                              Text(
-                                item.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    item.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: isSelected
+                                          ? Theme.of(context).colorScheme.primary
+                                          : Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '1 ${item.portionUnit}',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.white70,
+                                    ),
+                                  ),
+                                  Text(
+                                    '${item.calories.toInt()} kkal • ${item.protein}g P',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.white70,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '1 ${item.portionUnit}',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.white70,
+                              if (isSelected)
+                                Positioned(
+                                  top: 0,
+                                  right: 0,
+                                  child: Icon(
+                                    Icons.check_circle,
+                                    size: 16,
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
                                 ),
-                              ),
-                              Text(
-                                '${item.calories.toInt()} kkal • ${item.protein}g P',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.white54,
-                                ),
-                              ),
                             ],
                           ),
                         ),
@@ -1038,7 +1030,6 @@ class _AddCustomFoodDialogState extends State<AddCustomFoodDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      backgroundColor: const Color(0xFF1F232B),
       title: const Text('Tambah Makanan Kustom'),
       content: SingleChildScrollView(
         child: Form(
@@ -1248,7 +1239,6 @@ class _ProfileDialogState extends State<ProfileDialog> {
     final bmi = _currentBmi;
 
     return AlertDialog(
-      backgroundColor: const Color(0xFF1F232B),
       title: Row(
         children: [
           Icon(
@@ -1376,7 +1366,7 @@ class _ProfileDialogState extends State<ProfileDialog> {
                     const Divider(height: 14),
                     const Text(
                       'Rekomendasi Target Bulking:',
-                      style: TextStyle(fontSize: 11, color: Colors.white54),
+                      style: TextStyle(fontSize: 11, color: Colors.white70),
                     ),
                     const SizedBox(height: 8),
                     Row(
@@ -1507,9 +1497,18 @@ class _EditPortionSheetState extends State<EditPortionSheet> {
   }
 
   Future<void> _save() async {
+    final foodName = widget.log.foodItem.value?.name ?? 'Makanan';
     await DbService.updateMealLogPortion(widget.log.id, _portion);
     widget.onSaved();
-    if (mounted) Navigator.pop(context);
+    if (mounted) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Porsi $foodName berhasil diperbarui'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   @override
@@ -1554,7 +1553,7 @@ class _EditPortionSheetState extends State<EditPortionSheet> {
                       const SizedBox(height: 2),
                       Text(
                         'Porsi standar: 1 ${food?.portionUnit ?? 'porsi'} (~${stdGram.toInt()}g)',
-                        style: const TextStyle(color: Colors.white54, fontSize: 12),
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
                       ),
                     ],
                   ),
@@ -1590,7 +1589,7 @@ class _EditPortionSheetState extends State<EditPortionSheet> {
                           color: Theme.of(context).colorScheme.primary,
                         ),
                       ),
-                      const Text('Kalori (kkal)', style: TextStyle(fontSize: 11, color: Colors.white54)),
+                      const Text('Kalori (kkal)', style: TextStyle(fontSize: 11, color: Colors.white70)),
                     ],
                   ),
                   Container(width: 1, height: 32, color: const Color(0xFF333842)),
@@ -1604,7 +1603,7 @@ class _EditPortionSheetState extends State<EditPortionSheet> {
                           color: Color(0xFF4CAF50),
                         ),
                       ),
-                      const Text('Protein', style: TextStyle(fontSize: 11, color: Colors.white54)),
+                      const Text('Protein', style: TextStyle(fontSize: 11, color: Colors.white70)),
                     ],
                   ),
                   Container(width: 1, height: 32, color: const Color(0xFF333842)),
@@ -1620,7 +1619,7 @@ class _EditPortionSheetState extends State<EditPortionSheet> {
                       ),
                       Text(
                         '~${_portion.toStringAsFixed(1)} porsi',
-                        style: const TextStyle(fontSize: 11, color: Colors.white54),
+                        style: const TextStyle(fontSize: 11, color: Colors.white70),
                       ),
                     ],
                   ),
@@ -1750,7 +1749,7 @@ class _EditPortionSheetState extends State<EditPortionSheet> {
             Center(
               child: Text(
                 'Karbohidrat: ${carbs}g • Lemak: ${fat}g',
-                style: const TextStyle(fontSize: 11, color: Colors.white38),
+                style: const TextStyle(fontSize: 11, color: Colors.white70),
               ),
             ),
             const SizedBox(height: 20),
@@ -1837,9 +1836,43 @@ class _WeightLogSheetState extends State<WeightLogSheet> {
     }
   }
 
-  Future<void> _deleteWeight(WeightLog log) async {
-    await DbService.deleteWeightLog(log.id);
-    await _loadLogs();
+  Future<void> _confirmDeleteWeight(WeightLog log) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Hapus Catatan Berat?'),
+        content: Text(
+          'Catatan ${log.weight.toStringAsFixed(1)} kg pada tanggal ${log.date.day}/${log.date.month}/${log.date.year} akan dihapus.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await DbService.deleteWeightLog(log.id);
+      await _loadLogs();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Catatan ${log.weight.toStringAsFixed(1)} kg dihapus'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -1880,7 +1913,7 @@ class _WeightLogSheetState extends State<WeightLogSheet> {
           const SizedBox(height: 8),
           const Text(
             'Catat berat badan berkala untuk memantau progres bulking.',
-            style: TextStyle(color: Colors.white54, fontSize: 12),
+            style: TextStyle(color: Colors.white70, fontSize: 12),
           ),
           const SizedBox(height: 16),
           Row(
@@ -1922,7 +1955,7 @@ class _WeightLogSheetState extends State<WeightLogSheet> {
                     ? const Center(
                         child: Text(
                           'Belum ada catatan timbangan.',
-                          style: TextStyle(color: Colors.white38),
+                          style: TextStyle(color: Colors.white60),
                         ),
                       )
                     : ListView.separated(
@@ -1947,7 +1980,7 @@ class _WeightLogSheetState extends State<WeightLogSheet> {
                             ),
                             subtitle: Text(
                               dateStr,
-                              style: const TextStyle(fontSize: 12, color: Colors.white54),
+                              style: const TextStyle(fontSize: 12, color: Colors.white70),
                             ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -1980,8 +2013,9 @@ class _WeightLogSheetState extends State<WeightLogSheet> {
                                   ),
                                 IconButton(
                                   icon: const Icon(Icons.delete_outline, size: 18),
-                                  color: Colors.white38,
-                                  onPressed: () => _deleteWeight(log),
+                                  color: Colors.white60,
+                                  tooltip: 'Hapus Catatan',
+                                  onPressed: () => _confirmDeleteWeight(log),
                                 ),
                               ],
                             ),
