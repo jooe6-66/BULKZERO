@@ -1,12 +1,22 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:math' as math;
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+
 import 'models/food_item.dart';
 import 'models/meal_log.dart';
 import 'models/weight_log.dart';
 import 'services/db_service.dart';
+import 'services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await DbService.init();
+  await NotificationService.init();
   runApp(const BulkingTrackerApp());
 }
 
@@ -59,6 +69,14 @@ class BulkingTrackerApp extends StatelessWidget {
   }
 }
 
+/// Default meal session for the given hour of day.
+String sessionForHour(int hour) {
+  if (hour < 11) return 'Makan 1';
+  if (hour < 15) return 'Makan 2';
+  if (hour < 18) return 'Camilan';
+  return 'Makan 3';
+}
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -79,6 +97,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // Bulking targets (loaded from Isar)
   double _targetCalories = 2500;
   double _targetProtein = 140;
+  bool _remindersEnabled = false;
 
   static const List<String> _sessions = [
     'Makan 1',
@@ -86,6 +105,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     'Makan 3',
     'Camilan',
   ];
+
+  String _selectedSession = sessionForHour(DateTime.now().hour);
 
   @override
   void initState() {
@@ -103,7 +124,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _userAge = settings.age;
         _targetCalories = settings.targetCalories;
         _targetProtein = settings.targetProtein;
+        _remindersEnabled = settings.remindersEnabled;
       });
+      if (settings.remindersEnabled) {
+        NotificationService.setDailyReminders(true);
+      }
       if (!settings.isProfileCompleted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _openProfileDialog(isOnboarding: true);
@@ -278,6 +303,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  void _openSettingsSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => DataReminderSheet(
+        remindersEnabled: _remindersEnabled,
+        onRemindersChanged: (val) {
+          setState(() => _remindersEnabled = val);
+        },
+        onRestored: () async {
+          await _initData();
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -312,6 +353,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             tooltip: 'Tambah Makanan Kustom',
             onPressed: _openAddCustomFoodDialog,
           ),
+          IconButton(
+            icon: Icon(
+              _remindersEnabled ? Icons.notifications_active_outlined : Icons.settings_backup_restore,
+            ),
+            tooltip: 'Backup & Pengingat Makan',
+            onPressed: _openSettingsSheet,
+          ),
         ],
       ),
       body: _isLoading
@@ -324,28 +372,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _buildDailyProgressCard(),
                   const SizedBox(height: 20),
                   const Text(
-                    'Sesi Makan Hari Ini',
+                    'Sesi Makan',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 12),
-                  ..._sessions.map((session) => _buildSessionCard(session)),
-                  const SizedBox(height: 60),
+                  _buildSessionTabs(),
+                  const SizedBox(height: 12),
+                  _buildSessionCard(_selectedSession),
                 ],
               ),
             ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        foregroundColor: Colors.black,
-        icon: const Icon(Icons.add),
-        label: const Text('Catat Makan', style: TextStyle(fontWeight: FontWeight.bold)),
-        onPressed: () => _openAddLogSheet(),
-      ),
     );
   }
 
   Widget _buildDailyProgressCard() {
-    final calProgress = (_totalCalories / _targetCalories).clamp(0.0, 1.0);
-    final proProgress = (_totalProtein / _targetProtein).clamp(0.0, 1.0);
+    final calRatio = _targetCalories > 0 ? _totalCalories / _targetCalories : 0.0;
+    final proRatio = _targetProtein > 0 ? _totalProtein / _targetProtein : 0.0;
+    final calLeft = _targetCalories - _totalCalories;
+    final proLeft = _targetProtein - _totalProtein;
+    final totalCarbs = _logs.fold(0.0, (acc, item) => acc + item.totalCarbs);
+    final totalFat = _logs.fold(0.0, (acc, item) => acc + item.totalFat);
 
     return Card(
       child: Padding(
@@ -370,8 +416,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     children: [
                       IconButton(
                         icon: const Icon(Icons.chevron_left, size: 20),
-                        constraints: const BoxConstraints(),
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                         tooltip: 'Hari Sebelumnya',
                         onPressed: () => _changeDate(-1),
                       ),
@@ -408,8 +452,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       IconButton(
                         icon: const Icon(Icons.chevron_right, size: 20),
-                        constraints: const BoxConstraints(),
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                         tooltip: 'Hari Berikutnya',
                         onPressed: () => _changeDate(1),
                       ),
@@ -426,7 +468,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     label: 'Kalori',
                     current: _totalCalories.toInt().toString(),
                     target: '${_targetCalories.toInt()} kkal',
-                    progress: calProgress,
+                    ratio: calRatio,
+                    remaining: calLeft > 0
+                        ? 'Kurang ${calLeft.toInt()} kkal'
+                        : 'Lebih ${(-calLeft).toInt()} kkal',
                     progressColor: const Color(0xFFE5A93C),
                   ),
                 ),
@@ -436,11 +481,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     label: 'Protein',
                     current: '${_totalProtein.toStringAsFixed(1)}g',
                     target: '${_targetProtein.toInt()}g',
-                    progress: proProgress,
+                    ratio: proRatio,
+                    remaining: proLeft > 0
+                        ? 'Kurang ${proLeft.toStringAsFixed(1)}g'
+                        : 'Lebih ${(-proLeft).toStringAsFixed(1)}g',
                     progressColor: const Color(0xFF4CAF50),
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Karbo ${totalCarbs.toStringAsFixed(1)}g • Lemak ${totalFat.toStringAsFixed(1)}g',
+              style: const TextStyle(fontSize: 12, color: Colors.white70),
             ),
           ],
         ),
@@ -452,10 +505,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required String label,
     required String current,
     required String target,
-    required double progress,
+    required double ratio,
+    required String remaining,
     required Color progressColor,
   }) {
-    final percent = (progress * 100).toInt();
+    final percent = (ratio * 100).round();
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -512,13 +566,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
             child: LinearProgressIndicator(
-              value: progress,
+              value: ratio.clamp(0.0, 1.0),
               backgroundColor: const Color(0xFF333842),
               valueColor: AlwaysStoppedAnimation<Color>(progressColor),
               minHeight: 10,
             ),
           ),
+          const SizedBox(height: 6),
+          Text(
+            ratio >= 1 ? 'Target tercapai' : remaining,
+            style: TextStyle(
+              fontSize: 11,
+              color: ratio >= 1 ? progressColor : Colors.white70,
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSessionTabs() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: _sessions.map((s) {
+          final cal = _logs
+              .where((l) => l.mealSession == s)
+              .fold(0.0, (acc, item) => acc + item.totalCalories);
+          final selected = s == _selectedSession;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              selected: selected,
+              showCheckmark: false,
+              onSelected: (_) => setState(() => _selectedSession = s),
+              avatar: Icon(
+                s == 'Camilan' ? Icons.cookie_outlined : Icons.restaurant,
+                size: 16,
+              ),
+              label: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(s, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(
+                    '${cal.toInt()} kkal',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: selected ? null : Colors.white70,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }).toList(),
       ),
     );
   }
@@ -535,58 +637,69 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Column(
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    Icon(
-                      session.contains('Camilan')
-                          ? Icons.cookie_outlined
-                          : Icons.restaurant,
-                      size: 18,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      session,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+                Icon(
+                  session.contains('Camilan')
+                      ? Icons.cookie_outlined
+                      : Icons.restaurant,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.primary,
                 ),
-                Row(
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        session,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        '${sessionCal.toInt()} kkal • ${sessionPro.toStringAsFixed(1)}g pro',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.history, size: 20),
+                  tooltip: 'Salin menu kemarin ke $session',
+                  onPressed: () => _copyYesterdaySession(session),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.add, size: 20),
+                  tooltip: 'Tambah ke $session',
+                  onPressed: () => _openAddLogSheet(defaultSession: session),
+                ),
+              ],
+            ),
+            const Divider(height: 20),
+            if (sessionLogs.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Column(
                   children: [
                     Text(
-                      '${sessionCal.toInt()} kkal • ${sessionPro.toStringAsFixed(1)}g pro',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
+                      'Belum ada makanan di $session',
+                      style: const TextStyle(color: Colors.white70),
                     ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: const Icon(Icons.history, size: 20),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      tooltip: 'Salin menu kemarin ke $session',
-                      onPressed: () => _copyYesterdaySession(session),
-                    ),
-                    const SizedBox(width: 6),
-                    IconButton(
-                      icon: const Icon(Icons.add, size: 20),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      tooltip: 'Tambah ke $session',
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.add),
+                      label: const Text('Tambah Makanan'),
                       onPressed: () => _openAddLogSheet(defaultSession: session),
                     ),
                   ],
                 ),
-              ],
-            ),
-            if (sessionLogs.isNotEmpty) const Divider(height: 20),
+              ),
             ...sessionLogs.map((log) {
               final food = log.foodItem.value;
               final estGram = (food?.estimatedGrams ?? 0) * log.portionMultiplier;
@@ -673,16 +786,36 @@ class _LogMealSheetState extends State<LogMealSheet> {
   FoodItem? _selectedFood;
   double _portion = 1.0;
   final TextEditingController _searchCtrl = TextEditingController();
+  bool _showAll = false;
+  List<FoodItem> _recentFoods = [];
+
+  bool get _isSnackSession => _currentSession == 'Camilan';
 
   @override
   void initState() {
     super.initState();
     _currentSession = widget.initialSession;
     _loadFoods('');
+    _loadRecent();
+  }
+
+  void _changeSession(String session) {
+    setState(() => _currentSession = session);
+    _loadFoods(_searchCtrl.text);
+    _loadRecent();
+  }
+
+  Future<void> _loadRecent() async {
+    final list = await DbService.getRecentFoods(_currentSession);
+    if (mounted) setState(() => _recentFoods = list);
   }
 
   Future<void> _loadFoods(String query) async {
-    final list = await DbService.searchFoods(query);
+    final list = await DbService.searchFoods(
+      query,
+      isSnack: _showAll ? null : _isSnackSession,
+    );
+    if (!mounted) return;
     setState(() {
       _allFoods = list;
       if (_selectedFood == null && list.isNotEmpty) {
@@ -727,7 +860,7 @@ class _LogMealSheetState extends State<LogMealSheet> {
     final totalPro = (food?.protein ?? 0) * _portion;
     final totalGram = (food?.estimatedGrams ?? 0) * _portion;
 
-    return Padding(
+    return SingleChildScrollView(
       padding: EdgeInsets.only(
         left: 16,
         right: 16,
@@ -764,7 +897,7 @@ class _LogMealSheetState extends State<LogMealSheet> {
                     label: Text(s),
                     selected: isSelected,
                     onSelected: (val) {
-                      if (val) setState(() => _currentSession = s);
+                      if (val) _changeSession(s);
                     },
                   ),
                 );
@@ -775,13 +908,59 @@ class _LogMealSheetState extends State<LogMealSheet> {
           // Search Bar
           TextField(
             controller: _searchCtrl,
-            onChanged: _loadFoods,
+            onChanged: (q) {
+              setState(() {});
+              _loadFoods(q);
+            },
             decoration: const InputDecoration(
               prefixIcon: Icon(Icons.search),
-              hintText: 'Cari makanan (misal: telur, ayam, nasi)...',
+              hintText: 'Cari semua makanan (misal: telur, ayam, nasi)...',
             ),
           ),
           const SizedBox(height: 12),
+          if (_searchCtrl.text.trim().isEmpty) ...[
+            if (_recentFoods.isNotEmpty) ...[
+              const Text(
+                'Terakhir dimakan di sesi ini',
+                style: TextStyle(fontSize: 12, color: Colors.white70),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: _recentFoods
+                    .map((f) => ChoiceChip(
+                          label: Text(f.name),
+                          selected: _selectedFood?.id == f.id,
+                          onSelected: (_) => setState(() => _selectedFood = f),
+                        ))
+                    .toList(),
+              ),
+              const SizedBox(height: 12),
+            ],
+            Row(
+              children: [
+                ChoiceChip(
+                  label: Text(_isSnackSession ? 'Camilan' : 'Makanan'),
+                  selected: !_showAll,
+                  onSelected: (_) {
+                    setState(() => _showAll = false);
+                    _loadFoods('');
+                  },
+                ),
+                const SizedBox(width: 8),
+                ChoiceChip(
+                  label: const Text('Semua'),
+                  selected: _showAll,
+                  onSelected: (_) {
+                    setState(() => _showAll = true);
+                    _loadFoods('');
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
           // Food List Horizontal / Compact Picker
           SizedBox(
             height: 90,
@@ -1007,11 +1186,13 @@ class _AddCustomFoodDialogState extends State<AddCustomFoodDialog> {
   final _gramCtrl = TextEditingController(text: '100');
   final _calCtrl = TextEditingController();
   final _proCtrl = TextEditingController();
+  bool _isSnack = false;
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
     await DbService.addCustomFood(
+      isSnack: _isSnack,
       name: _nameCtrl.text,
       portionUnit: _unitCtrl.text,
       estimatedGrams: double.tryParse(_gramCtrl.text) ?? 100,
@@ -1045,6 +1226,15 @@ class _AddCustomFoodDialogState extends State<AddCustomFoodDialog> {
                 ),
                 validator: (val) =>
                     val == null || val.trim().isEmpty ? 'Wajib diisi' : null,
+              ),
+              const SizedBox(height: 10),
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(value: false, label: Text('Makanan'), icon: Icon(Icons.restaurant)),
+                  ButtonSegment(value: true, label: Text('Camilan'), icon: Icon(Icons.cookie_outlined)),
+                ],
+                selected: {_isSnack},
+                onSelectionChanged: (v) => setState(() => _isSnack = v.first),
               ),
               const SizedBox(height: 10),
               TextFormField(
@@ -1877,15 +2067,440 @@ class _WeightLogSheetState extends State<WeightLogSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return ConstrainedBox(
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.75,
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
       ),
+      child: SingleChildScrollView(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 20,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.monitor_weight, color: Theme.of(context).colorScheme.primary),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Log Berat Badan',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Catat berat badan berkala untuk memantau progres bulking.',
+              style: TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _weightCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Berat Badan Hari Ini',
+                      suffixText: 'kg',
+                      prefixIcon: Icon(Icons.fitness_center, size: 18),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: _saveWeight,
+                  child: const Text('Catat', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (_logs.length >= 2) ...[
+              _buildWeightChart(),
+              const SizedBox(height: 16),
+            ],
+            const Text(
+              'Riwayat Timbangan',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white70),
+            ),
+            const SizedBox(height: 8),
+            if (_isLoading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_logs.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Text(
+                    'Belum ada catatan timbangan.',
+                    style: TextStyle(color: Colors.white60),
+                  ),
+                ),
+              )
+            else
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _logs.length,
+                separatorBuilder: (_, _) => const Divider(height: 1, color: Color(0xFF262A32)),
+                itemBuilder: (ctx, index) {
+                  final log = _logs[index];
+                  double? delta;
+                  if (index + 1 < _logs.length) {
+                    delta = log.weight - _logs[index + 1].weight;
+                  }
+
+                  final dateStr =
+                      '${log.date.day}/${log.date.month}/${log.date.year} ${log.date.hour.toString().padLeft(2, '0')}:${log.date.minute.toString().padLeft(2, '0')}';
+
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      '${log.weight.toStringAsFixed(1)} kg',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    subtitle: Text(
+                      dateStr,
+                      style: const TextStyle(fontSize: 12, color: Colors.white70),
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (delta != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: delta > 0
+                                  ? Colors.green.withValues(alpha: 0.2)
+                                  : delta < 0
+                                      ? Colors.redAccent.withValues(alpha: 0.2)
+                                      : Colors.grey.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              delta > 0
+                                  ? '+${delta.toStringAsFixed(1)} kg'
+                                  : '${delta.toStringAsFixed(1)} kg',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: delta > 0
+                                    ? Colors.greenAccent
+                                    : delta < 0
+                                        ? Colors.redAccent
+                                        : Colors.white70,
+                              ),
+                            ),
+                          ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                          color: Colors.white60,
+                          tooltip: 'Hapus Catatan',
+                          onPressed: () => _confirmDeleteWeight(log),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWeightChart() {
+    // Take up to 14 most recent entries in chronological order.
+    final points = _logs.take(14).toList().reversed.toList();
+    final weights = points.map((e) => e.weight).toList();
+    final minW = weights.reduce(math.min);
+    final maxW = weights.reduce(math.max);
+    final diff = weights.last - weights.first;
+    final diffStr = diff >= 0 ? '+${diff.toStringAsFixed(1)} kg' : '${diff.toStringAsFixed(1)} kg';
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF232730),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Tren Berat (${points.length} catatan) • Min ${minW.toStringAsFixed(1)} – Maks ${maxW.toStringAsFixed(1)} kg',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white70),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                diffStr,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: diff >= 0 ? Colors.greenAccent : Colors.redAccent,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 90,
+            width: double.infinity,
+            child: CustomPaint(
+              painter: _WeightTrendPainter(
+                weights: weights,
+                minWeight: minW,
+                maxWeight: maxW,
+                lineColor: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Flexible(
+                child: Text(
+                  '${points.first.date.day}/${points.first.date.month} (${points.first.weight.toStringAsFixed(1)} kg)',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11, color: Colors.white60),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  '${points.last.date.day}/${points.last.date.month} (${points.last.weight.toStringAsFixed(1)} kg)',
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
+                  style: const TextStyle(fontSize: 11, color: Colors.white60),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WeightTrendPainter extends CustomPainter {
+  final List<double> weights;
+  final double minWeight;
+  final double maxWeight;
+  final Color lineColor;
+
+  _WeightTrendPainter({
+    required this.weights,
+    required this.minWeight,
+    required this.maxWeight,
+    required this.lineColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (weights.length < 2) return;
+    final range = (maxWeight - minWeight).abs() < 0.1 ? 1.0 : (maxWeight - minWeight);
+    const padY = 10.0;
+    final usableH = size.height - padY * 2;
+
+    Offset pointAt(int i) {
+      final x = (i / (weights.length - 1)) * size.width;
+      final norm = (weights[i] - minWeight) / range;
+      final y = size.height - padY - (norm * usableH);
+      return Offset(x, y);
+    }
+
+    final gridPaint = Paint()
+      ..color = const Color(0xFF333842)
+      ..strokeWidth = 1;
+    for (final frac in [0.0, 0.5, 1.0]) {
+      final y = padY + usableH * frac;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
+
+    final path = Path()..moveTo(pointAt(0).dx, pointAt(0).dy);
+    for (var i = 1; i < weights.length; i++) {
+      final p = pointAt(i);
+      path.lineTo(p.dx, p.dy);
+    }
+
+    final fillPath = Path.from(path)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    final fillPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          lineColor.withValues(alpha: 0.32),
+          lineColor.withValues(alpha: 0.0),
+        ],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+    canvas.drawPath(fillPath, fillPaint);
+
+    final linePaint = Paint()
+      ..color = lineColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(path, linePaint);
+
+    final dotPaint = Paint()..color = lineColor;
+    for (var i = 0; i < weights.length; i++) {
+      canvas.drawCircle(pointAt(i), 3.5, dotPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _WeightTrendPainter oldDelegate) =>
+      oldDelegate.weights != weights || oldDelegate.lineColor != lineColor;
+}
+
+class DataReminderSheet extends StatefulWidget {
+  final bool remindersEnabled;
+  final ValueChanged<bool> onRemindersChanged;
+  final VoidCallback onRestored;
+
+  const DataReminderSheet({
+    super.key,
+    required this.remindersEnabled,
+    required this.onRemindersChanged,
+    required this.onRestored,
+  });
+
+  @override
+  State<DataReminderSheet> createState() => _DataReminderSheetState();
+}
+
+class _DataReminderSheetState extends State<DataReminderSheet> {
+  late bool _remindersEnabled;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _remindersEnabled = widget.remindersEnabled;
+  }
+
+  Future<void> _toggleReminders(bool val) async {
+    setState(() => _remindersEnabled = val);
+    await DbService.setRemindersEnabled(val);
+    final ok = await NotificationService.setDailyReminders(val);
+    widget.onRemindersChanged(val);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          val
+              ? (ok
+                  ? 'Pengingat makan harian diaktifkan (08:00, 13:00, 16:30, 19:30)'
+                  : 'Pengingat disimpan (notifikasi tidak tersedia di perangkat ini)')
+              : 'Pengingat makan harian dimatikan',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _exportBackup() async {
+    setState(() => _busy = true);
+    try {
+      final jsonStr = await DbService.exportBackupJson();
+      final dir = await getTemporaryDirectory();
+      final now = DateTime.now();
+      final stamp =
+          '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+      final file = File('${dir.path}/bulkzero_backup_$stamp.json');
+      await file.writeAsString(jsonStr);
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path, mimeType: 'application/json')],
+          subject: 'Backup Data BulkZero ($stamp)',
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal mengekspor backup: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _importBackup() async {
+    setState(() => _busy = true);
+    try {
+      final picked = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+      if (picked.isEmpty) return;
+      final pf = picked.first;
+      final content = pf.path != null
+          ? await File(pf.path!).readAsString()
+          : utf8.decode(await pf.xFile.readAsBytes());
+      await DbService.importBackupJson(content);
+      widget.onRestored();
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Data backup berhasil dipulihkan!')),
+        );
+      }
+    } on FormatException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal mengimpor backup: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
       padding: EdgeInsets.only(
         left: 20,
         right: 20,
         top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1894,15 +2509,9 @@ class _WeightLogSheetState extends State<WeightLogSheet> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Icon(Icons.monitor_weight, color: Theme.of(context).colorScheme.primary),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Log Berat Badan',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                ],
+              const Text(
+                'Pengingat & Backup Data',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               IconButton(
                 icon: const Icon(Icons.close),
@@ -1910,118 +2519,64 @@ class _WeightLogSheetState extends State<WeightLogSheet> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          const Text(
-            'Catat berat badan berkala untuk memantau progres bulking.',
-            style: TextStyle(color: Colors.white70, fontSize: 12),
+          const SizedBox(height: 12),
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF232730),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: SwitchListTile(
+              title: const Text(
+                'Pengingat Makan Harian',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              subtitle: const Text(
+                'Notifikasi otomatis: 08:00 (Makan 1), 13:00 (Makan 2), 16:30 (Camilan), 19:30 (Makan 3)',
+                style: TextStyle(fontSize: 12, color: Colors.white70),
+              ),
+              value: _remindersEnabled,
+              onChanged: _toggleReminders,
+            ),
           ),
           const SizedBox(height: 16),
+          const Text(
+            'Backup & Restore Offline (JSON)',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white70),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Simpan seluruh profil, makanan kustom, log makan, dan catatan berat badan ke file JSON agar aman saat ganti HP.',
+            style: TextStyle(fontSize: 12, color: Colors.white60),
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
-                child: TextField(
-                  controller: _weightCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'Berat Badan Hari Ini',
-                    suffixText: 'kg',
-                    prefixIcon: Icon(Icons.fitness_center, size: 18),
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
+                  onPressed: _busy ? null : _exportBackup,
+                  icon: const Icon(Icons.upload_file),
+                  label: const Text('Export JSON', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ),
               const SizedBox(width: 12),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              Expanded(
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: _busy ? null : _importBackup,
+                  icon: const Icon(Icons.download),
+                  label: const Text('Import JSON', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
-                onPressed: _saveWeight,
-                child: const Text('Catat', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ],
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'Riwayat Timbangan',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white70),
-          ),
-          const SizedBox(height: 8),
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _logs.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'Belum ada catatan timbangan.',
-                          style: TextStyle(color: Colors.white60),
-                        ),
-                      )
-                    : ListView.separated(
-                        shrinkWrap: true,
-                        itemCount: _logs.length,
-                        separatorBuilder: (_, _) => const Divider(height: 1, color: Color(0xFF262A32)),
-                        itemBuilder: (ctx, index) {
-                          final log = _logs[index];
-                          double? delta;
-                          if (index + 1 < _logs.length) {
-                            delta = log.weight - _logs[index + 1].weight;
-                          }
-
-                          final dateStr =
-                              '${log.date.day}/${log.date.month}/${log.date.year} ${log.date.hour.toString().padLeft(2, '0')}:${log.date.minute.toString().padLeft(2, '0')}';
-
-                          return ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(
-                              '${log.weight.toStringAsFixed(1)} kg',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                            ),
-                            subtitle: Text(
-                              dateStr,
-                              style: const TextStyle(fontSize: 12, color: Colors.white70),
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (delta != null)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: delta > 0
-                                          ? Colors.green.withValues(alpha: 0.2)
-                                          : delta < 0
-                                              ? Colors.redAccent.withValues(alpha: 0.2)
-                                              : Colors.grey.withValues(alpha: 0.2),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Text(
-                                      delta > 0
-                                          ? '+${delta.toStringAsFixed(1)} kg'
-                                          : '${delta.toStringAsFixed(1)} kg',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        color: delta > 0
-                                            ? Colors.greenAccent
-                                            : delta < 0
-                                                ? Colors.redAccent
-                                                : Colors.white70,
-                                      ),
-                                    ),
-                                  ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline, size: 18),
-                                  color: Colors.white60,
-                                  tooltip: 'Hapus Catatan',
-                                  onPressed: () => _confirmDeleteWeight(log),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
           ),
         ],
       ),
